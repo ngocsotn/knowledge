@@ -43,7 +43,56 @@ If a request violates any simple request condition (e.g., sends JSON payload via
 
 ---
 
-## 3. Best Practices
+## 3. Dynamic Whitelisting Code Implementation (Go)
+
+When supporting multiple origins with session cookies (`Access-Control-Allow-Credentials: true`), you **cannot** use the wildcard `*` for the origin. The backend must dynamically validate the incoming origin against a trusted whitelist and echo it back.
+
+### Production-Grade Go CORS Middleware:
+```go
+package middleware
+
+import (
+	"net/http"
+)
+
+// Allowed origins whitelist
+var allowedOrigins = map[string]bool{
+	"https://ngocsotn.com":         true,
+	"https://admin.ngocsotn.com":   true,
+	"http://localhost:3000":        true, // local development
+}
+
+func CORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+
+		// 1. Dynamic Origin Validation
+		if allowedOrigins[origin] {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
+
+		// 2. Set allowed methods & headers for approved requests
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+		
+		// 3. Set preflight caching age (2 hours)
+		w.Header().Set("Access-Control-Max-Age", "7200")
+
+		// 4. Handle Preflight OPTIONS requests instantly with no auth check
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusNoContent) // 204
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+```
+
+---
+
+## 4. Best Practices
 
 1. **Never use wildcard `*` with Credentials:**
    * If `Access-Control-Allow-Credentials: true` is set, `Access-Control-Allow-Origin` **cannot** be `*`. The server must dynamically return the exact request's `Origin` header after validation.
@@ -56,7 +105,7 @@ If a request violates any simple request condition (e.g., sends JSON payload via
 
 ---
 
-## 4. Popular Interview Questions & High-Impact Answers
+## 5. Popular Interview Questions & High-Impact Answers
 
 ### Q1: Why do we see a CORS error in the browser console, but the same endpoint works fine in Postman, cURL, or a backend service?
 * **Answer:** CORS is purely a **browser-enforced security standard**. It does not exist inside non-browser runtimes like Node.js, Python, cURL, or API clients like Postman. Those tools do not implement the Same-Origin Policy and ignore CORS headers, making the request and reading the response directly without restriction.
@@ -66,3 +115,4 @@ If a request violates any simple request condition (e.g., sends JSON payload via
 
 ### Q3: How do you handle CORS when your backend supports multiple frontend environments (e.g., staging, production)?
 * **Answer:** The backend must dynamically inspect the incoming `Origin` header of the request, check if it matches an allowed whitelist (e.g., configured via environment variables), and if valid, echo that origin back in the `Access-Control-Allow-Origin` response header.
+

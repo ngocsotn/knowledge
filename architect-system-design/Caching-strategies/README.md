@@ -1,6 +1,6 @@
 # Caching Strategies & Eviction Policies
 
-Comprehensive interview study guide covering distributed caching patterns, write paths, cache-aside strategies, and memory eviction policies.
+Comprehensive interview study guide covering distributed caching patterns, write paths, cache-aside strategies, memory eviction policies, and Redis Cluster architecture under scale.
 
 ---
 
@@ -44,27 +44,76 @@ Cache-Aside (Lazy)     Read-Through            Write-Through           Write-Bac
 
 ---
 
-## 3. Cache Eviction Policies
+## 3. Distributed Cache Architecture: Redis Cluster
 
-Since in-memory caches have finite RAM limits, they must drop old keys when they run out of space using predefined eviction algorithms:
+When a single Redis node cannot handle the write/read throughput or memory storage requirements of an enterprise-scale system, **Redis Cluster** provides a distributed, highly available architecture.
 
-* **LRU (Least Recently Used):** Discards the keys that haven't been accessed for the longest period. (The industry standard default).
-* **LFU (Least Frequently Used):** Tracks access frequency. Discards keys with the lowest access count.
-* **FIFO (First In, First Out):** Discards keys in the order they were created, regardless of access patterns.
-* **TTL (Time To Live):** Keys expire and are evicted automatically after a predefined time-frame.
+```
+                  ┌───────────────────────────────┐
+                  │         Redis Cluster         │
+                  │   [16,384 Hash Slots Total]   │
+                  └───────────────┬───────────────┘
+          ┌───────────────────────┼───────────────────────┐
+          ▼                       ▼                       ▼
+    Master Node 1           Master Node 2           Master Node 3
+  [Slots: 0 - 5460]      [Slots: 5461 - 10922]  [Slots: 10923 - 16383]
+          │                       │                       │
+      (Replica)               (Replica)               (Replica)
+    Replica Node 1          Replica Node 2          Replica Node 3
+```
+
+### A. Sharding and Hash Slots
+- **No Consistent Hashing**: Unlike some systems that use consistent hashing rings, Redis Cluster uses **Hash Slots**.
+- **16384 Slots**: There are exactly 16,384 logical slots in a cluster. The slots are divided amongst the master nodes.
+- **Key-to-Slot Mapping**: Every key is mapped to one of these slots using the CRC16 checksum formula:
+  $$\text{Slot} = \text{CRC16}(key) \pmod{16384}$$
+- **Cross-Slot Operations (Hash Tags)**: Normally, multi-key operations (like `MGET` or transactions) are forbidden in a cluster if the keys hash to different slots on different nodes. 
+  - *Solution*: Use **Hash Tags** `{}` in key names. Only the text inside the curly braces is hashed.
+  - *Example*: `{user123}:profile` and `{user123}:orders` are guaranteed to land on the exact same hash slot and node, allowing safe multi-key operations.
+
+### B. High Availability: Sentinel vs. Native Cluster Failover
+- **Redis Sentinel**: Best for non-sharded configurations (single master, multiple replicas). Sentinels monitor nodes, handle automatic failover, and act as a configuration provider for clients. Sentinels run as a separate service layer.
+- **Native Cluster Failover**: In a Redis Cluster, master nodes monitor each other through gossip protocols. If a majority of master nodes detect Node 1 has failed, they vote to promote Node 1's replica to be the new master. No external Sentinel cluster is required.
 
 ---
 
-## 4. Popular Interview Questions & High-Impact Answers
+## 4. Deep-Dive Eviction Policies
+
+When Redis reaches its maximum memory limit (`maxmemory`), it must evict existing keys to make room for new writes based on the configured `maxmemory-policy`.
+
+### A. How Redis Implements LRU (Least Recently Used)
+- **True LRU**: Requires maintaining a doubly linked list of all keys in memory, moving a key to the head on every read/write. This introduces extreme memory overhead and lock contention.
+- **Approximated LRU**: To avoid this overhead, Redis stores a 24-bit timestamp of the last access time in every object's header. When eviction is triggered, Redis selects a random sample of keys (e.g., 5 or 10 keys) and evicts the one with the oldest timestamp among them. This achieves nearly identical performance to True LRU with zero memory or latency overhead.
+
+### B. How LFU (Least Frequently Used) Is Implemented
+Redis LFU maps frequency into a single 8-bit log counter and an 8-bit decay timestamp inside the object's header:
+1. **Logarithmic Counter**: Instead of incrementing linearly, the counter is updated logarithmically. The higher the counter, the less likely it is to increment on subsequent reads, capping the counter at 255.
+2. **Decay Period**: A background routine decreases the counter over time based on how long ago the key was last accessed (decay timestamp), ensuring that historical spikes in key usage decay if the key becomes idle.
+
+---
+
+## 5. Popular Interview Questions & High-Impact Answers
 
 ### Q1: What is the Cache Invalidation problem, and why should you "delete" a key on write instead of "updating" it?
-* **Answer:** If two concurrent write requests attempt to update the same record in an **update-on-write** cache, a race condition can cause the DB and cache to drift (e.g., Writer 1 updates DB, Writer 2 updates DB, Writer 2 updates cache, Writer 1 updates cache—leaving the cache with stale Writer 1 data while DB has Writer 2 data). By **deleting (invalidating) the cache key on write**, we force the next read request to safely perform a cache-aside lookup, pulling the latest authoritative data directly from the DB.
+**Answer**:
+If two concurrent write requests attempt to update the same record in an **update-on-write** cache, a race condition can cause the DB and cache to drift:
+1. Writer A updates the DB.
+2. Writer B updates the DB.
+3. Writer B updates the cache.
+4. Writer A updates the cache (network delay on step 3).
+- **Result**: The database has Writer B's data, but the cache has Writer A's stale data.
+- **The Solution**: Always **delete (invalidate) the cache key on write**. By doing this, we eliminate the race condition completely. The next read operation will safely experience a cache miss and fetch the single authoritative source of truth from the database.
 
-### Q2: Explain Cache Penetration, Cache Avalanche, and Cache Shear (Stampede), and how you mitigate them.
-* **Answer:**
-  * **Cache Penetration:** Requests target keys that *never* exist in the DB (e.g., negative IDs), forcing queries to hit the DB every time. *Fix:* Cache empty/null results with a short TTL, or use a **Bloom Filter** at the edge.
-  * **Cache Avalanche:** Many popular keys expire at the exact same second, or the cache server crashes, causing millions of requests to flood the database simultaneously. *Fix:* Add a **random jitter (noise)** to TTL expirations, and deploy high-availability Redis clusters.
-  * **Cache Stampede (Cache Shear):** A highly popular key expires, and thousands of concurrent threads detect the miss at the same time, executing identical slow SQL queries to rebuild it. *Fix:* Implement **Mutex Locking (Singleflight)** so only the first thread performs the SQL read while others wait for the cached result.
+### Q2: Explain Cache Penetration, Cache Avalanche, and Cache Stampede (Shear), and how you mitigate them.
+**Answer**:
+- **Cache Penetration**: Requests target keys that *never* exist in the database (e.g., negative IDs or spam queries), bypassing the cache and hitting the database every time.
+  - *Fix*: Cache empty/null results with a very short TTL, or run a **Bloom Filter** at the gateway layer to instantly reject non-existent IDs.
+- **Cache Avalanche**: Many popular keys expire at the exact same second, or the cache cluster crashes, causing millions of concurrent reads to flood the database.
+  - *Fix*: Add a **random jitter (noise)** to TTL expirations (e.g., `TTL = 3600 + random(0, 300)` seconds) so keys expire at staggered times, and deploy highly available Redis Clusters with automatic replica promotion.
+- **Cache Stampede (Dog-piling)**: A highly popular key (e.g., homepage banner) expires, and thousands of concurrent requests detect the miss at the exact same millisecond, triggering identical slow SQL queries to rebuild the key.
+  - *Fix*: Implement **Mutex Locking (Singleflight / Semaphore)** in the application. Only the first thread gets a lock to query the DB and rebuild the cache, while other concurrent threads wait for the lock to release and read the newly cached value.
 
 ### Q3: When is a Write-Back (Write-Behind) caching strategy suitable, and what is its main danger?
-* **Answer:** Write-back caching is ideal for write-heavy systems where database write performance is a major bottleneck, such as multiplayer game state updates, IoT telemetry ingestion, or real-time analytics tracking. The primary danger is **data loss**: because the write is acknowledged as successful once stored in volatile RAM, any power outage, node crash, or container restart before the asynchronous database sync completes results in unrecoverable data loss.
+**Answer**:
+Write-back caching is ideal for write-heavy systems where database write performance is a major bottleneck, such as multiplayer game state updates, IoT telemetry ingestion, or real-time analytics tracking. The primary danger is **data loss**: because the write is acknowledged as successful once stored in volatile RAM, any power outage, node crash, or container restart before the asynchronous database sync completes results in unrecoverable data loss.
+

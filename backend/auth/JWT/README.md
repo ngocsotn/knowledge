@@ -1,6 +1,6 @@
 # JSON Web Token (JWT) Authentication
 
-Comprehensive interview study guide covering JWT structure, security, symmetric vs. asymmetric signing, and token lifecycle management.
+Comprehensive interview study guide covering JWT structure, security, symmetric vs. asymmetric signing, token lifecycle management, and Refresh Token Rotation (RTR).
 
 ---
 
@@ -36,20 +36,50 @@ A JWT is a string composed of three dot-separated, Base64Url-encoded segments:
 
 ---
 
-## 3. JWT Lifecycle & Best Practices
+## 3. Refresh Token Rotation (RTR) & Security
 
-1. **Short-Lived Access Tokens + Long-Lived Refresh Tokens:**
-   * Access Token: Valid for 5 to 15 minutes. Sent with API requests to authenticate.
-   * Refresh Token: Valid for 7 to 30 days. Used strictly to request a new access token when it expires. Store securely in an `HttpOnly`, `Secure` cookie.
-2. **How to handle Token Revocation (The Stateless Dilemma):**
-   * Since JWTs are verified statelessly by reading the signature, you cannot easily revoke a token before its `exp` time.
-   * *Solution:* **Redis Blacklisting**. Store revoked access token IDs (`jti`) in Redis with a TTL matching the token's remaining lifetime. On every request, check if the token's `jti` is blacklisted.
-3. **Validate the Algorithm Attribute:**
-   * Always hardcode the expected signature algorithm on your backend. Do not dynamically trust the `alg` header of the incoming token, preventing "alg: none" exploits where attackers bypass validation.
+To protect against leaked long-lived refresh tokens, production systems use **Refresh Token Rotation (RTR)**.
+
+```
+       Client                           Auth Server
+         │                                   │
+         ├─────── Use Refresh Token 1 ──────>┤
+         │                                   │ (Generates new Access Token + Refresh Token 2)
+         │                                   │ (Invalidates Refresh Token 1)
+         <─── Return Access + Refresh 2 ─────┤
+         │                                   │
+```
+
+### A. How RTR Works:
+1. Every time a client submits a refresh token (e.g., `RefreshToken_1`) to renew their session, the Authorization Server returns a **new access token** AND a **new refresh token** (`RefreshToken_2`).
+2. The server immediately invalidates/deletes the old `RefreshToken_1`.
+
+### B. Automatic Reuse Detection (The Core Security Feature):
+If an attacker steals `RefreshToken_1` and attempts to use it:
+- **Case 1 (Attacker refreshes first)**: The attacker gets a new access/refresh pair. Later, when the legitimate user tries to refresh with `RefreshToken_1`, the server detects that `RefreshToken_1` has *already been used*.
+- **Case 2 (User refreshes first)**: The legitimate user gets a new pair. Later, the attacker submits `RefreshToken_1`, which is now marked as *already used*.
+- **The Fail-Closed Action**: Upon detecting any reuse of an expired/old refresh token, the server assumes a security compromise has occurred. It immediately **invalidates the entire family of refresh tokens** descended from that root (revoking all active access sessions for that user ID) and forces a full username/password re-authentication.
 
 ---
 
-## 4. Popular Interview Questions & High-Impact Answers
+## 4. JWT in Microservices Architecture
+
+In distributed microservices, authentication and authorization are split to optimize scalability.
+
+```
+ Client ──(External JWT)──> [API Gateway] ──(User Headers/Internal JWT)──> [Downstream Microservices]
+                                │                                                 │
+                                └───────── (Verifies Asymmetric RS256 Public Key)─┘
+```
+
+1. **Edge Gateway Authentication**: The API Gateway acts as the entry point. It accepts the client's external JWT, validates its signature (using the Auth Server's public JWKS endpoint), and rejects invalid requests immediately.
+2. **Token Propagation**:
+   - **Internal Headers (Simple)**: The Gateway extracts user metadata (e.g., `user_id`, `roles`) and passes them downstream as plain HTTP headers (e.g., `X-User-ID: 123`). This keeps downstream microservices simple and stateless.
+   - **Internal JWT (High Security)**: If services cannot trust the network paths completely, the Gateway signs a short-lived internal JWT (using a symmetric cluster key) containing user claims and passes it downstream, where microservices verify the signature.
+
+---
+
+## 5. Popular Interview Questions & High-Impact Answers
 
 ### Q1: What is the "alg: none" vulnerability in JWTs, and how do you prevent it?
 * **Answer:** In early JWT implementations, backend libraries dynamically read the `"alg"` header parameter from the token to decide how to verify it. If an attacker changed `"alg"` to `"none"` and stripped the signature, some vulnerable libraries bypassed signature verification entirely, accepting the forged token as valid. To prevent this, modern libraries and secure backends explicitly configure and enforce a specific expected algorithm (e.g., forcing HMAC-256) during validation, completely ignoring the token's `"alg"` header claim.
@@ -60,5 +90,6 @@ A JWT is a string composed of three dot-separated, Base64Url-encoded segments:
   2. **Database Version Check:** Store a `token_version` integer on the user's database row. When generating a JWT, inject this version. To revoke, increment the DB version. The API server verifies if the token's version matches the DB version (requires a DB query, losing pure statelessness).
   3. **Short Expiry Times:** Enforce extremely short-lived access tokens (e.g., 5 mins) so compromised tokens expire rapidly on their own.
 
-### Q3: What is the difference between Access Tokens and Refresh Tokens?
-* **Answer:** **Access Tokens** are short-lived credentials used to authenticate and authorize API requests. They are sent frequently over the network. **Refresh Tokens** are long-lived credentials used strictly to obtain new access tokens. They are rarely sent over the network (only when renewing sessions) and are stored with maximum security restrictions (e.g., HttpOnly cookie with path `/api/v1/auth/refresh`) to prevent exposure.
+### Q3: Explain how Refresh Token Rotation (RTR) prevents session hijacking.
+* **Answer:** Refresh Token Rotation ensures that refresh tokens are single-use-only. Every time a session is refreshed, a new refresh token is issued, and the old one is invalidated. If an attacker intercepts a refresh token, either the user or the attacker will eventually attempt to reuse an already-spent token. The Authorization Server immediately flags this reuse, assumes a breach has occurred, and revokes the entire token family (killing all active sessions for that user) to protect the account.
+
