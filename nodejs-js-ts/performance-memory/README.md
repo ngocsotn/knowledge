@@ -142,14 +142,87 @@ In modern DevOps (Docker, Kubernetes), processes are isolated using Linux Kernel
 * **cgroups**: Restrict what a process can *use* (CPU cycles, RAM limits, Disk IOPS).
 * **OOM Killer (Out-of-Memory)**: If a container process (or Node.js worker) exceeds the physical RAM limits defined by its cgroup, the Linux kernel instantly terminates the process with **Exit Code 137 (SIGKILL)** to protect the rest of the OS.
 
+## 5. Advanced OS Architecture: Processes vs. Threads & Thread Scheduling
+
+Writing scaling backends requires understanding how the Operating System coordinates execution and allocates CPU execution units.
+
+### A. Process vs. Thread (Physical & Virtual Memory)
+
+| Feature | Process | Thread |
+| :--- | :--- | :--- |
+| **Memory Isolation** | Fully isolated **Virtual Memory Space** (Private heap, stack, file descriptors). Cannot read/write other processes' memory. | Shares the **Heap and Address Space** of its parent process. Each thread has only its private **Stack**. |
+| **Communication** | Heavy **IPC (Inter-Process Communication)**: Pipes, Unix Sockets, TCP/IP, Shared Memory Segments. | Instant, direct reading/writing of variables on the shared Heap (requires synchronization). |
+| **Context Switch Cost** | **High**: The OS scheduler must flush CPU caches, swap page tables, and clear the **Translation Lookaside Buffer (TLB)**. | **Low**: CPU caches and page tables are preserved; only registers and stack pointers are swapped. |
+| **Crashes** | Isolated: A crash in one process does not affect other processes. | Catastrophic: A segmentation fault or unhandled exception in one thread crashes the entire process. |
+
+### B. Thread Scheduling Models (1:1 vs. M:N)
+Operating systems and runtimes map software execution flows to CPU cores using different mapping models:
+
+1. **1:1 Threading Model (Kernel-Level Threading - Linux/POSIX, Java, Node.js):**
+   - **How it works:** Every application thread maps directly to exactly one **OS Kernel Thread**. The operating system kernel is entirely responsible for scheduling, context-switching, and resource management.
+   - **Trade-off:** High robustness, fully native CPU scheduling. However, thread creation is expensive (~1MB stack overhead per thread on Linux), and context-switching requires traversing the user-space/kernel-space boundary.
+2. **M:N Threading Model (User-Level / Hybrid Threading - Go Goroutines, Erlang Processes):**
+   - **How it works:** The runtime maps $M$ lightweight user-space threads (green threads) onto $N$ OS kernel threads. A custom scheduler running in user-space multiplexes execution.
+   - **Trade-off:** Ultra-lightweight thread overhead (goroutines start at ~2KB memory overhead), allowing millions of active flows. However, the custom scheduler is highly complex to write, and uncooperative blocking system calls can starve the underlying kernel threads.
+
+### C. Control Groups (cgroups) & Containerization
+In modern DevOps (Docker, Kubernetes), processes are isolated using Linux Kernel namespaces and restricted using **cgroups (Control Groups)**:
+* **Namespaces**: Restrict what a process can *see* (PID namespace isolates process list, Mount namespace isolates file systems, Network namespace isolates ports).
+* **cgroups**: Restrict what a process can *use* (CPU cycles, RAM limits, Disk IOPS).
+* **OOM Killer (Out-of-Memory)**: If a container process (or Node.js worker) exceeds the physical RAM limits defined by its cgroup, the Linux kernel instantly terminates the process with **Exit Code 137 (SIGKILL)** to protect the rest of the OS.
+
 ---
 
-## 6. Multi-Threaded vs. Single-Threaded Race Conditions
+## 6. Multi-Threaded Concurrency: Mutex, Semaphores, CAS, Futex
+
+In multi-threaded languages, multiple threads running on different CPU cores can read and write the exact same memory address simultaneously. To guarantee synchronization and thread-safety, engines rely on four foundational primitives:
+
+```
+┌────────────────────────────────────────────────────────┐
+│ Concurrency Synchronization Primitives                 │
+├─────────────────┬───────────────────┬──────────────────┤
+│ Primitive       │ Mechanism         │ CPU Impact       │
+├─────────────────┼───────────────────┼──────────────────┤
+│ Mutex           │ Binary Mutual Excl│ Sleep on block   │
+│ Semaphore       │ N-resource count  │ Queue wait list  │
+│ Atomic CAS      │ CPU instruction   │ Lock-free spin   │
+│ Futex           │ User-space fast-pt│ Adaptive fallbck │
+└─────────────────┴───────────────────┴──────────────────┘
+```
+
+### 1. Mutex (Mutual Exclusion)
+* **Mechanics:** A binary lock used to guard critical code blocks. Only one thread can hold the lock at a time.
+* **The Blocked Path:** If Thread A holds the Mutex, and Thread B attempts to acquire it, Thread B is blocked. The OS transitions Thread B's state from `RUNNING` to `WAITING` (sleeping), freeing up the CPU core for other processes. Once Thread A releases the lock, the OS kernel wakes Thread B up.
+* **Cost:** High overhead for uncontested locks due to OS context-switching during sleep/wakeup transitions.
+
+### 2. Semaphores (Counting Locks)
+* **Mechanics:** An extension of the Mutex concept that maintains an internal counter representing available slots for a resource. Evaluated via two atomic operations:
+  - **P (Wait / decrement):** Checks if the counter is $>0$. If yes, decrements it and proceeds. If $0$, blocks the thread until a slot is freed.
+  - **V (Signal / increment):** Increments the counter and wakes up a waiting thread.
+* **Types:** 
+  - *Binary Semaphore:* Counter capped at 1 (behaves exactly like a Mutex, but lacks ownership tracking—any thread can unlock a semaphore, whereas only the lock-owner should unlock a Mutex).
+  - *Counting Semaphore:* Allows up to $N$ concurrent threads (e.g., limiting concurrent database connections).
+
+### 3. Atomic CAS (Compare-And-Swap) - Lock-Free
+* **Mechanics:** A hardware-level CPU instruction (`CMPXCHG` on x86) that executes atomically. It takes three parameters:
+  $$\text{CAS}(\text{Memory Address}, \text{Expected Old Value}, \text{New Value})$$
+* **How it works:** The CPU updates the value at the target memory address with the `New Value` **only** if the current value matches the `Expected Old Value`. If the memory has changed in the interim, the operation fails, and the loop typically spins to retry (**Spinlock**).
+* **Pros:** Extremely fast and fully lock-free; bypasses OS kernel scheduler overhead.
+* **Cons:** High CPU utilization ("spinning") under heavy lock contention.
+
+### 4. Futex (Fast Userspace Mutex)
+* **The Problem:** Mutexes are too slow (force system calls even if there is no lock contention), while Spinlocks consume too much CPU (constantly spinning while waiting for a lock).
+* **The Solution (The Linux Futex):** Implements an **Adaptive Lock** that splits acquisition into two paths:
+  1. *The Fast Path (Uncontested):* The thread attempts to acquire the lock in **user-space** using a lightweight, non-blocking atomic **CAS** operation. If successful, it bypasses the Linux kernel entirely (near-zero overhead).
+  2. *The Slow Path (Contested):* If the atomic CAS fails (meaning another thread already holds the lock), the thread falls back to a system call (`sys_futex`). The Linux kernel steps in, suspends the thread, places it on a wait queue, and wakes it up only when the lock holder releases it.
+
+---
+
+## 7. Multi-Threaded vs. Single-Threaded Race Conditions
 
 ### A. Memory-Level Race Conditions (Multi-Threaded)
-In multi-threaded languages (Go, Java, C++), multiple threads running on different CPU cores can read and write the exact same memory address simultaneously.
-* **The Problem**: A non-atomic operation like `count++` actually executes as three CPU instructions: `Read count`, `Increment value`, `Write count`. If two threads interleave, both read `0` and write `1`, causing a lost increment.
-* **The Solution**: Synchronize access using **Mutual Exclusions (Mutexes)**, **Semaphores**, or CPU-level hardware-level **Atomic CAS (Compare-And-Swap)** instructions.
+In multi-threaded languages (Go, Java, C++), a non-atomic operation like `count++` executes as three separate CPU instructions: `Read count`, `Increment value`, `Write count`. If two threads interleave, both read `0` and write `1`, causing a lost increment.
+To prevent this, variables are wrapped in atomic structures (e.g., `sync/atomic` in Go) or synchronized using Mutexes/Futexes.
 
 ### B. Logical-Level Race Conditions (Single-Threaded Event Loop)
 Because JavaScript executes user code in a single-threaded loop, memory-level race conditions cannot occur. You do not need a Mutex to protect `count++`.

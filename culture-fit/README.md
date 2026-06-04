@@ -174,3 +174,45 @@ No single company size is objectively "better." Choose the archetype that aligns
      - *Rewrite Cost:* 2 engineers for 2 weeks = $12k upfront cost.
      - *ROI:* The rewrite pays for itself in under 2 months, freeing up engineering velocity for new revenue-generating features.
   2. *De-risk the Migration:* Do not propose a massive "big-bang" rewrite. Propose a phased, incremental replacement (such as using the **Strangler Fig Pattern**) to show value in short, 1-week feedback loops.
+
+### Scenario C: Managing Up & Engineering Alignment
+* **Core Principle:** Executive leaders care about predictability, risk mitigation, and strategic business outcomes. Never bring technical problems to leadership without presenting the business trade-offs and options.
+* **Framework:**
+  1. *Acknowledge and Align:* Begin by validating the business priority. *"I understand that launching our market expansion on October 1st is critical for our Q4 revenue goals."*
+  2. *Present Clear Trade-offs:* Use the **Tri-Option Framework**:
+     - *Option A (Raw Speed):* Push to hit the date by skipping database indexing and security audits. *Risk:* 40% chance of data breach or catastrophic downtime on launch.
+     - *Option B (Phased Delivery - Recommended):* Launch on time but with a smaller, highly robust feature subset (e.g., launching in 2 cities instead of 10). *Risk:* Zero. Leaves database migrations fully tested.
+     - *Option C (Full Scope, Delayed):* Delay launch by 3 weeks to complete the full scope safely.
+  3. *Drive Decisive Action:* Ask for a decision based on risk appetite. This establishes you as a business partner who understands engineering as a mechanism of commercial delivery.
+
+### Scenario D: Driving Large-Scale Migrations Without Authority
+* **Core Principle:** Influence without authority is achieved by building empathy, showing immediate value, and lowering the friction of adoption.
+* **Framework:**
+  1. *Empathy Interviews:* Talk to the tech leads of other teams. Do not tell them what to do. Ask what their pain points are. *"What is the hardest part of your deployment cycle right now?"*
+  2. *The Zero-Friction PoC:* Build the tooling, template, or library yourself. If migrating to a new API pattern, write the codemods or boilerplate so that teams can adopt it with a single terminal command.
+  3. *Lightweight Pilot:* Partner with a single friendly team. Execute the migration on their service, resolve all edge cases, and collect hard metrics showing a 30% reduction in compile times or 50% fewer production bugs.
+  4. *Social Proof & Momentum:* Present the successful pilot data in engineering forums. Let the pilot team advocate for your solution, creating organic bottom-up adoption that leadership will naturally codify as a standard.
+
+### Scenario E: Facilitating Healthy Architecture RFC / Design Forums
+* **Core Principle:** Prevent "bike-shedding" (endless debates over trivial details like naming conventions) and decision paralysis by establishing objective, structured decision frameworks.
+* **Framework:**
+  1. **The 1-Pager RFC Template:** Force authors to define:
+     - *The Problem Statement:* 2 sentences explaining the exact pain point.
+     - *The Non-Goals:* Explicitly boundary what is *out of scope* for this design to prevent scope creep.
+     - *The Alternative Architectures:* Detail at least 2 other solutions that were seriously considered and why they were rejected.
+  2. **The 70-30 Rule of Consensus:** Do not wait for 100% agreement—that leads to design-by-committee compromise where nobody is happy. Aim for 70% alignment, and then ask the holdouts to **"Disagree and Commit"** to keep velocity high.
+  3. **Establish a Tie-Breaker:** Before the meeting starts, designate a single, clear decision owner (usually the team lead or principal architect) who will make the final call if the debate stalls.
+
+### Scenario F: Formulating OKRs & Systemic Performance Reviews
+* **Core Principle:** Performance metrics and OKRs must be objective, quantifiable, and focused on output and business outcomes rather than inputs (like lines of code written).
+* **Framework:**
+  1. **Designing High-Impact Engineering OKRs:**
+     - *Weak KR:* "Write documentation for the database." (Input-based, hard to measure quality).
+     - *Strong KR:* "Reduce new-hire developer onboarding time from 5 days to under 4 hours by implementing an automated Docker setup and interactive README." (Outcome-based, easily verifiable).
+     - *Systemic KR:* "Improve our P95 API response times from 350ms to under 120ms by implementing Redis caching and SQL query optimization."
+  2. **Delivering Peer Performance Reviews (The SBI Model):**
+     - **Situation:** *"During our Q2 monolith refactor..."*
+     - **Behavior:** *"...you proactively wrote a comprehensive migration script and pair-programmed with two junior engineers to help them transition their services."*
+     - **Impact:** *"...this prevented any deployment regressions, kept us on schedule, and significantly built up the technical confidence of our junior peers."*
+     - **Constructive Opportunity:** Include one concrete, high-level growth goal: *"In H2, I would love to see you step up to own the RFC design phase for our event-driven architecture, moving from local execution to cross-team system design."*
+

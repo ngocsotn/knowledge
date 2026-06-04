@@ -63,7 +63,98 @@ Micro-tasks do **not** run in a specific Event Loop phase. Instead, **the Micro-
 
 ---
 
-## 4. Popular Interview Questions & High-Impact Answers
+## 3. Macro-Tasks vs. Micro-Tasks
+
+Callbacks are divided into two priority queues that execute during the Event Loop:
+
+1. **Macro-tasks (Tasks):** Standard callbacks like `setTimeout`, `setInterval`, `setImmediate`, and I/O tasks.
+2. **Micro-tasks:** High-priority operations including `process.nextTick()` and **Promise resolve/reject callbacks** (`.then`, `.catch`, `await`).
+
+### The Golden Rule of Micro-tasks
+Micro-tasks do **not** run in a specific Event Loop phase. Instead, **the Micro-task queue is flushed immediately after the current JavaScript execution finishes, before moving to the next Event Loop phase, and between every single macro-task.**
+
+*Note:* `process.nextTick()` has higher priority than standard Promises and is executed *before* the Promise micro-task queue.
+
+---
+
+## 4. Event Loop Starvation & Microservice Patterns
+
+Because Node.js executes user JavaScript on a single thread, any operation that runs synchronously for too long blocks the thread, causing **Event Loop Starvation**. While blocked, the server cannot accept new TCP sockets, process incoming HTTP requests, or resolve timers.
+
+```
+       Event Loop Starvation Flow:
+       
+[HTTP Request] ──► [Event Loop] ──► [Sync CPU Computation] (Blocked!)
+                         │
+                         ▼ (Starvation: All subsequent requests are queued/dropped)
+                 [Timer Callbacks] ──► (Blocked)
+                 [I/O Polling]     ──► (Blocked)
+```
+
+### 1. Mechanisms of Event Loop Blockage
+* **Synchronous Computation (CPU-Bound):** Operations like parsing a massive 100MB JSON payload (`JSON.parse()`), complex cryptographic operations (`crypto.pbkdf2Sync()`), or synchronous image manipulation block the Call Stack entirely.
+* **Microtask Queue Abuse (The Infinite Loop Gate):** 
+  - Microtask queues (Promises, `process.nextTick`) are flushed **to exhaustion** before the loop transitions to the next phase or executes the next macro-task.
+  - If a function recursively schedules a microtask (e.g., recursively calling `process.nextTick()` or infinitely chaining resolved `.then` promises), the microtask queue will **never go empty**.
+  - The Event Loop will be starved indefinitely, completely freezing the server. Timers and I/O callbacks will never execute, even though the call stack isn't blocked by an explicit `while(true)` loop.
+
+```javascript
+// Catastrophic Event Loop Starvation via Infinite Microtask Loop:
+function starve() {
+  process.nextTick(starve); // Recursively append to microtask queue
+}
+starve(); // Event loop frozen forever. I/O and timers halt.
+```
+
+### 2. Production Event Loop Monitoring
+High-availability microservices must actively monitor Event Loop latency (also known as **Loop Delay**).
+* **Uv Loop Latency Metrics:** Measure the delta between the scheduled time of a timer callback and the actual execution time. If a timer scheduled for 10ms only runs after 150ms, the loop delay is 140ms.
+* **The `blocked-at` Profiler:** A library that leverages the Node.js native `async_hooks` module to identify the exact file, line number, and function call responsible for blocking the event loop:
+
+```javascript
+const blockedAt = require('blocked-at');
+blockedAt((time, stack) => {
+  if (time > 50) { // Log sync blocks exceeding 50ms
+    console.warn(`Event loop blocked for ${time}ms at:`, stack);
+  }
+});
+```
+
+### 3. Starvation Mitigation Patterns
+
+To prevent event loop starvation in production microservices, apply these architectural scaling patterns:
+
+#### A. Multi-Process Clustering
+Run multiple processes to share the port using Node's native **Cluster Module** or a process manager like **PM2**.
+* **Round-Robin Port Sharing:** The master process binds to the system port and uses round-robin load distribution to route incoming TCP connections directly to child workers, ensuring that if Worker 1 is CPU-blocked, Workers 2-4 continue accepting connections.
+
+#### B. Offloading to Worker Threads
+For CPU-bound tasks (e.g., resizing uploads, computing hash values), spawn a separate OS thread using **Worker Threads**.
+* **Zero Event-Loop Blockage:** The CPU-heavy JS compiles and runs on a dedicated V8 execution context and OS thread, leaving the main thread's Event Loop free to poll network I/O.
+
+#### C. Asynchronous Batching (`setImmediate`)
+If a CPU-heavy loop must run on the main thread, split the computation into smaller, manageable chunks and defer execution of subsequent slices using `setImmediate()`. This allows the Event Loop to yield, poll for incoming I/O, execute microtasks, and process other pending events between batches.
+
+```javascript
+// Deferring CPU-intensive loops with setImmediate
+function batchProcess(items, startIndex = 0) {
+  const batchSize = 100;
+  const endIndex = Math.min(startIndex + batchSize, items.length);
+
+  for (let i = startIndex; i < endIndex; i++) {
+    heavyCompute(items[i]); // Run slice synchronously
+  }
+
+  if (endIndex < items.length) {
+    // Yield main thread back to Event Loop, scheduling next slice in Check Phase
+    setImmediate(() => batchProcess(items, endIndex));
+  }
+}
+```
+
+---
+
+## 5. Popular Interview Questions & High-Impact Answers
 
 ### Q1: What is the difference between setImmediate() and setTimeout(fn, 0)?
 * **Answer:**
