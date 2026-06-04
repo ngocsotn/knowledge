@@ -83,7 +83,61 @@ Implementing custom filtering and sorting requires dynamic SQL query constructio
 
 ---
 
-## 3. Hard Interview Questions & Deep Answers
+## 3. Advanced Indexing Rules for Complex Filters
+
+When constructing indexes to support dynamic filter combinations, understanding B-Tree index properties is critical.
+
+### The Equality-Range Rule (Index Order Rule)
+When designing a composite index to support filters with both equality and range conditions (e.g., `WHERE status = 'active' AND price > 100`):
+- **Rule**: Place **equality** columns *first* in the index definition, and **range/inequality** columns *last*.
+- **Index Definition**: `CREATE INDEX idx_products_status_price ON products (status, price);`
+- **Why**: 
+  - The database first navigates the index tree directly to the `status = 'active'` branch (an exact B-Tree node lookup).
+  - From there, it performs a sequential, linear range scan across contiguous nodes where `price > 100`.
+  - If you created the index as `(price, status)`, filtering by `price > 100` forces the database to scan the entire index segment for values greater than 100, checking the status condition on each index node, leading to a much larger index scan volume.
+
+### Index Scan vs. Index Intersection vs. Bitmap Index Scan
+- **Index Scan (Composite Index)**: Multiple columns merged into a single multi-column B-Tree. Perfect for matching queries that use all or a prefix of those columns.
+- **Index Intersection (Bitmap Index Scan)**: Occurs when the database planner uses two separate, single-column indexes on two different fields (e.g., an index on `category_id` and another on `user_id`). The planner scans both indexes, builds memory bitmaps of qualifying row IDs, intersects the bitmaps (using `AND`/`OR` operations), and then fetches only the intersecting row headers from the main heap.
+- **Trade-off**: Composite indexes are significantly faster and consume less CPU than dynamically intersecting separate indexes, but they require storing larger, dedicated index structures.
+
+---
+
+## 4. Scalable Full-Text Search (FTS)
+
+Standard pattern matching using `LIKE '%pattern%'` is a common performance bottleneck:
+- `LIKE '%pattern%'` (leading wildcard) **cannot use standard B-Tree indexes**. It forces the database to execute a full table scan, parsing and pattern-matching every single string on every row.
+- `LIKE 'pattern%'` (trailing wildcard only) can use B-Tree indexes but fails to find matches inside words.
+
+### PostgreSQL Native Full-Text Search (TSVector and GIN)
+For massive tables where offloading to Elasticsearch is too heavy, native FTS using a **GIN (Generalized Inverted Index)** is the production-ready alternative.
+
+1. **How it works**: Words are parsed into lexemes (normalized root words, e.g., "jumping" and "jumped" map to root "jump") using dictionaries.
+2. **Schema setup**:
+   ```sql
+   -- Create a generated column that automatically keeps a normalized TSVector of text fields
+   ALTER TABLE posts ADD COLUMN search_vector tsvector
+     GENERATED ALWAYS AS (
+       to_tsvector('english', coalesce(title, '') || ' ' || coalesce(body, ''))
+     ) STORED;
+   ```
+3. **The Index**: Use a **GIN index** on the `search_vector` column:
+   ```sql
+   CREATE INDEX idx_posts_search_vector ON posts USING gin(search_vector);
+   ```
+4. **Execution**:
+   ```sql
+   -- Perform instant inverted index lookup using @@ operator
+   SELECT title, body, ts_rank(search_vector, query) as rank
+   FROM posts, to_tsquery('english', 'database & scaling') as query
+   WHERE search_vector @@ query
+   ORDER BY rank DESC;
+   ```
+   - **Performance**: Instant millisecond lookups regardless of row counts, since the GIN index directly points to the specific document IDs containing the searched lexemes.
+
+---
+
+## 5. Hard Interview Questions & Deep Answers
 
 ### Q1: How do you design cursor-based pagination when sorting by a non-unique column (e.g., product price)?
 **Answer**:
@@ -114,3 +168,4 @@ Offset-based pagination is still highly useful in scenarios where:
 1. **Total Page Count and Jumping are Required**: Standard admin dashboards or e-commerce pagination grids require a "Jump to Page X" interface, which is mathematically impossible with pure cursor-based pagination (since cursor position depends on reading prior records).
 2. **Small/Bounded Datasets**: If the maximum table size is small (e.g., less than 50,000 rows), the overhead of scanning offsets is negligible (milliseconds), and offset pagination is simpler to implement.
 3. **Low Concurrency / Static Data**: If data changes rarely (e.g., a list of countries or states), the risk of data drifting (skipping/duplicating rows) during navigation is virtually zero.
+
