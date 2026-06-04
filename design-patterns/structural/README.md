@@ -42,3 +42,132 @@ Comprehensive interview study guide covering Structural design patterns, focusin
 
 ### Q3: Why is the Facade Pattern highly useful when migrating a monolithic system to microservices?
 * **Answer:** Migrating to microservices can break frontend client integrations if clients must suddenly orchestrate calls across 10 separate backend microservices. By placing an **API Gateway (acting as a distributed Facade)** at the entry point, the frontend continues to call a single simplified endpoint (e.g., `/checkout`). The Gateway Facade handles the internal orchestration (calling payments, orders, and shipping microservices) on behalf of the client, isolating the client from the underlying architectural migration.
+
+---
+
+## 4. Production-Grade Deep Dive: The Decorator Pattern
+
+The Decorator pattern is standard in production backend engineering, commonly appearing as **HTTP middleware pipelines**. Middlewares dynamically "wrap" or decorate core business handlers with cross-cutting concerns (logging, rate-limiting, authentication) without the core handler ever knowing.
+
+### 1. Go Middleware Decorator (net/http)
+In Go, functions are first-class citizens. We can leverage functional closures to dynamically chain decorators.
+
+```go
+package main
+
+import (
+	"log"
+	"net/http"
+	"time"
+)
+
+// HTTPHandlerDecorator defines our functional decorator signature
+type HTTPHandlerDecorator func(http.Handler) http.Handler
+
+// Core Business Logic (The component to decorate)
+func processPaymentHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Println("[CORE] processing transaction...")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	})
+}
+
+// LoggingDecorator (Decorator 1)
+func WithLogging() HTTPHandlerDecorator {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			log.Printf("[LOG START] %s %s", r.Method, r.URL.Path)
+			
+			// Call the wrapped component
+			next.ServeHTTP(w, r)
+			
+			log.Printf("[LOG END] Completed in %v", time.Since(start))
+		})
+	}
+}
+
+// AuthenticationDecorator (Decorator 2)
+func WithAuth() HTTPHandlerDecorator {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token := r.Header.Get("Authorization")
+			if token != "Bearer secret-token" {
+				log.Println("[AUTH FAIL] Unauthenticated access rejected.")
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			log.Println("[AUTH SUCCESS] Valid token detected.")
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// Pipeline builder chains multiple decorators sequentially
+func Chain(handler http.Handler, decorators ...HTTPHandlerDecorator) http.Handler {
+	for i := len(decorators) - 1; i >= 0; i-- {
+		handler = decorators[i](handler)
+	}
+	return handler
+}
+
+func main() {
+	coreHandler := processPaymentHandler()
+	
+	// Dynamically decorate core business handler with logging & auth
+	decoratedPipeline := Chain(coreHandler, WithLogging(), WithAuth())
+	
+	http.Handle("/api/v1/payment", decoratedPipeline)
+	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+```
+
+### 2. TypeScript/JavaScript Middleware Decorator (Express-style)
+In Node.js, we can construct standard request-response pipelines where decorator functions pass execution down the chain using a `next()` callback.
+
+```typescript
+import express, { Request, Response, NextFunction } from 'express';
+
+type Middleware = (req: Request, res: Response, next: NextFunction) => void;
+
+// Base Controller (The Core Component)
+const processPaymentController = (req: Request, res: Response) => {
+  console.log("[CORE] Processing secure transaction...");
+  res.status(200).json({ status: "success" });
+};
+
+// Logging Decorator (Decorator 1)
+const withLogging: Middleware = (req, res, next) => {
+  const start = Date.now();
+  console.log(`[LOG START] ${req.method} ${req.url}`);
+  
+  // Track response completion
+  res.on('finish', () => {
+    console.log(`[LOG END] Completed in ${Date.now() - start}ms`);
+  });
+  
+  next(); // Pass control to next decorator
+};
+
+// Authentication Decorator (Decorator 2)
+const withAuth: Middleware = (req, res, next) => {
+  const token = req.headers.authorization;
+  if (token !== 'Bearer secret-token') {
+    console.log("[AUTH FAIL] Invalid credentials.");
+    res.status(401).send("Unauthorized");
+    return;
+  }
+  console.log("[AUTH SUCCESS] Token accepted.");
+  next();
+};
+
+// Registering the decorated routing pipeline
+const app = express();
+app.post('/api/v1/payment', withLogging, withAuth, processPaymentController);
+
+app.listen(3000, () => {
+  console.log("TypeScript middleware pipeline listening on port 3000");
+});
+```
+

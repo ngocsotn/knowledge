@@ -159,3 +159,78 @@ As the recursion traverses down a path, it checks if the current partial solutio
   ```
   - **Time Complexity**: $O(N \times N!)$
   - **Space Complexity**: $O(N)$ (recursion stack depth).
+
+---
+
+## 5. Staff-Level Deep Dive: DP Memoization Lattices
+
+When solving multi-dimensional DP problems (like edit-distance or path-finding on grids), the states form a mathematical structure called a **directed acyclic state-space graph**, or a **Memoization Lattice**. 
+
+Understanding the lattice layout tells you:
+1. **The State Dependencies:** Which cell must be calculated before the current cell can be evaluated.
+2. **Space Compression Opportunities:** If a cell at row `i` only depends on cells in row `i-1`, the space complexity can be compressed from a 2D $O(R \times C)$ grid down to a 1D $O(C)$ sliding row.
+
+### The Grid Pathfinding Lattice (Unique Paths II)
+Consider a robot navigating an $M \times N$ grid from top-left to bottom-right, dodging obstacles.
+
+```
+State space lattice representation:
+ (0,0) ──► (0,1) ──► (0,2)
+   │         │         │
+   ▼         ▼         ▼
+ (1,0) ──► Obstacle  (1,2)
+   │                   │
+   ▼                   ▼
+ (2,0) ──► (2,1) ──► (2,2) [Destination]
+```
+
+At any cell `(i, j)`, the optimal path count is the sum of paths from its incoming neighbors:
+
+$$\text{dp}[i][j] = \text{dp}[i-1][j] + \text{dp}[i][j-1]$$
+
+If an obstacle is placed at `(i, j)`, we block the lattice node, forcing `dp[i][j] = 0`.
+
+### Go Implementation with 1D Space Compression
+Instead of allocating a full $M \times N$ matrix, we can compress the space to $O(N)$ by keeping track of only the current and previous rows (sliding window).
+
+```go
+package main
+
+import "fmt"
+
+func uniquePathsWithObstacles(obstacleGrid [][]int) int {
+	if len(obstacleGrid) == 0 || obstacleGrid[0][0] == 1 {
+		return 0
+	}
+
+	cols := len(obstacleGrid[0])
+	
+	// Create compressed 1D lattice row
+	dp := make([]int, cols)
+	dp[0] = 1 // Base case: starting point
+
+	for i := 0; i < len(obstacleGrid); i++ {
+		for j := 0; j < cols; j++ {
+			if obstacleGrid[i][j] == 1 {
+				dp[j] = 0 // Obstacle blocks path propagation
+			} else if j > 0 {
+				// State-transition formula:
+				// New dp[j] (representing current row's path count)
+				// is sum of old dp[j] (top cell) and new dp[j-1] (left cell)
+				dp[j] += dp[j-1]
+			}
+		}
+	}
+	return dp[cols-1]
+}
+
+func main() {
+	grid := [][]int{
+		{0, 0, 0},
+		{0, 1, 0},
+		{0, 0, 0},
+	}
+	fmt.Println("Unique paths avoiding obstacle:", uniquePathsWithObstacles(grid)) // Output: 2
+}
+```
+
