@@ -26,7 +26,109 @@ Comprehensive study guide covering modern microfrontends, browser-level multi-th
 
 ---
 
-## 2. Service Workers & PWA Caching
+## 2. Microfrontend Isolation & Security Topologies
+
+To build a reliable microfrontend cluster, systems must strictly isolate styling, script execution, and document objects to prevent one unstable module from crashing the entire host container.
+
+### 1. Style Encapsulation (Shadow DOM vs. CSS containment)
+Traditional CSS is global. If Microfrontend A declares `.button { background: red; }`, it can instantly destroy the visual design of Microfrontend B.
+
+#### Solution A: The Shadow DOM (Strong CSS Encapsulation)
+The **Shadow DOM** creates a scoped document fragment attached to a DOM element, completely isolated from the main DOM tree.
+* **Encapsulation Boundary:** Style rules declared inside a `#shadow-root` do not leak out to the parent page, and global styles (with some exceptions like inherited font-family and custom CSS properties) do not penetrate inward.
+
+```html
+<div id="mfe-container">
+  <!-- Outer Main DOM -->
+  <style>h1 { color: blue; }</style> 
+  <h1>Monolith Header</h1>
+
+  <!-- Shadow Host -->
+  <div id="mfe-shadow-host"></div>
+</div>
+
+<script>
+  const host = document.querySelector('#mfe-shadow-host');
+  // Create shadow root in 'closed' or 'open' mode
+  const shadowRoot = host.attachShadow({ mode: 'open' });
+  
+  // Scoped styles and elements
+  shadowRoot.innerHTML = `
+    <style>
+      h1 { color: red; } /* Isolated: Only colors elements inside shadow root */
+    </style>
+    <h1>Microfrontend Scoped Title</h1>
+  `;
+</script>
+```
+
+#### Solution B: Web Components & Custom Element Registry Safety
+Web Components wrap shadow roots inside custom HTML tags. However, if Microfrontend A and Microfrontend B both attempt to register the exact same element name (`customElements.define('app-button', Button)`), the browser throws a fatal error.
+* **The Production Fix:** Implement namespace prefixing (`customElements.define('mfe-a-button', Button)`) or dynamic registries (`ScopedRegistry` polyfills) to intercept and deduplicate registrations at runtime.
+
+---
+
+### 2. Runtime Script Isolation (Iframes vs. JavaScript Sandboxes)
+
+| Isolation Pillar | Standard Iframes | Shadow DOM + JavaScript Proxies |
+|---|---|---|
+| **CSS Scoping** | Absolute isolation (native browser level) | Excellent isolation (shadow boundary) |
+| **JS Global State (`window`)** | Complete isolation (separate window context) | Shared `window` object (leakage risk) |
+| **Performance Overhead** | High (memory cost of multiple document contexts)| Extremely low (lightweight native DOM nodes) |
+| **Communication Channel** | Structured `postMessage` protocol | Direct JavaScript function calls or custom events |
+
+#### Production Dynamic Sandbox Pattern (JavaScript Proxies)
+When using Module Federation without iframes, advanced hosts wrap each remote module inside an active **ES6 Proxy-based Sandbox** (like Single-SPA or qiankun). This intercepts access to the global `window` object, keeping global variables scoped strictly to the current microfrontend context:
+
+```javascript
+class WindowSandbox {
+  constructor() {
+    this.fakeWindow = {};
+    this.proxy = new Proxy(window, {
+      set: (target, prop, value) => {
+        // Intercept global sets and isolate them to the fake window
+        this.fakeWindow[prop] = value;
+        return true;
+      },
+      get: (target, prop) => {
+        // Prefer fake window values over true global window values
+        if (prop in this.fakeWindow) {
+          return this.fakeWindow[prop];
+        }
+        return target[prop];
+      }
+    });
+  }
+}
+
+const sandboxA = new WindowSandbox();
+// Microfrontend A executes inside sandboxA.proxy context:
+// sandboxA.proxy.globalToken = "A-Secret"; -> Writes to fakeWindow, original window is untouched!
+```
+
+---
+
+## 3. Module Federation Internals & Loading Orchestration
+
+**Webpack/Vite Module Federation** is the gold-standard framework for dynamic runtime integration. It compiles microfrontends into separate modular entry points, letting them resolve, load, and execute dependencies dynamically at runtime.
+
+### The Loading Lifecycle Pipeline
+
+```
+[Container Main Page] ──► 1. Loads 'remoteEntry.js' script ──► 2. Initializes Remote Scope (Deduplicates)
+                                                                            │
+[Target Render Node]  ◄── 4. Executes Remote Component  ◄── 3. Fetches shared dependencies & chunk
+```
+
+1. **Load `remoteEntry.js`:** The container loads a tiny metadata script (typically `< 5KB`) containing the remote's manifest (all exposed modules and required dependencies).
+2. **Container Scope Initialization:** The container reads the remote manifest and initializes the shared dependency pool. If both Container and Remote need `lodash`, they negotiate:
+   - If version constraints match, the container registers a single version of `lodash` and shares it.
+   - If Remote needs a higher incompatible version, it downloads its own private chunk, preventing version crashes.
+3. **Module Resolution:** When the container triggers `import("remoteApp/Button")`, the federation loader executes a dynamic `import()` to download the exact component script chunk and injects it directly into the running application memory.
+
+---
+
+## 4. Service Workers & PWA Caching
 
 A **Service Worker** is a type of Web Worker: a background script written in JavaScript that the browser runs separately from the main thread. It acts as a client-side network proxy, intercepting and caching outgoing HTTP requests.
 
@@ -51,7 +153,7 @@ A **Service Worker** is a type of Web Worker: a background script written in Jav
 
 ---
 
-## 3. Web Workers (Multi-Threading in Browser)
+## 5. Web Workers (Multi-Threading in Browser)
 
 By default, JavaScript in browsers runs on a **Single Thread (the UI/Main Thread)**. If you run a heavy computation (e.g., sorting 10 million rows, parsing large JSON files, executing canvas image manipulations), the main thread freezes, locking the UI and degrading user experience (Jank).
 
@@ -79,7 +181,7 @@ onmessage = function(event) {
 
 ---
 
-## 4. Hard Interview Questions & Deep Answers
+## 6. Hard Interview Questions & Deep Answers
 
 ### Q1: How do you prevent dependency duplication and manage shared libraries in dynamic Module Federation?
 **Answer**:
@@ -117,3 +219,18 @@ Service workers have a strict, secure lifecycle:
 - **The Production Fixes**:
   1. **`self.skipWaiting()`**: Inside the Service Worker `install` event, call `self.skipWaiting()`. This forces the waiting worker to instantly terminate the old worker and take control.
   2. **Reload Promotion (UX-friendly)**: Listen for the `controlling` state change in the main thread. Prompt the user with a toast notice: *"New version available. Reload to update."* On click, call `postMessage({ type: 'SKIP_WAITING' })` to trigger the change and programmatically reload the page (`window.location.reload()`).
+
+### Q3: How do you prevent CSS style leakage in microfrontends without using iframe overhead?
+**Answer**:
+Without the memory and performance cost of iframes, systems utilize three patterns to prevent style leakage:
+1. **The Shadow DOM (Hard Browser Isolation):** Render each microfrontend inside a Web Component wrapped in an open Shadow Root (`host.attachShadow({ mode: 'open' })`). This guarantees native style scoping where CSS rules cannot bleed out or in.
+2. **CSS Modules (Build-Time Namespace Scoping):** Configure the bundler (Webpack/Vite) to compile CSS classes into unique hashes (e.g., `.button` compiles to `.Button_module_hash_18f9`).
+3. **Prefixing / BEM Conventions:** Enforce strict naming rules (e.g., prefixing all rules under `.mfe-billing-`).
+
+### Q4: Explain how ES6 Proxies can be used to construct a global object sandbox for running microfrontends.
+**Answer**:
+When multiple microfrontends are loaded onto the same window context, they can pollute the global scope or overwrite global flags. To prevent this, a host container can intercept global variables using **ES6 Proxies**:
+1. The container creates a lightweight "fake window" object (`{}`) for each microfrontend instance.
+2. A Proxy wraps the global `window` object. Any set actions (`proxyWindow.myVar = 'value'`) are trapped and written strictly to the fake window.
+3. Any get actions search the fake window first, and fall back to the real `window` if not found.
+4. When switching routes, the proxy context is swapped, instantly resetting global side-effects without reloading the browser page.
