@@ -43,10 +43,67 @@ Client                                                   Server
 ```
 
 ### TLS 1.3 Handshake (1 Round-Trip - 1 RTT - Optimized)
-TLS 1.3 eliminates the secondary key exchange round-trip by sending key-share guesses along with the initial client hello.
-1. **ClientHello**: Sends cipher choices AND a public key share guess (Diffie-Hellman Key Exchange parameters).
-2. **ServerHello**: Returns the selected cipher, server's public key share, server certificate, and signature. Both client and server calculate the symmetric session key instantly.
-3. **Finished**: Server sends encrypted Finished signal. Client returns Finished.
+TLS 1.3 optimizes transport performance by eliminating redundant round-trips. It is a mandatory **1-RTT (Round-Trip Time)** handshake compared to TLS 1.2's **2-RTT** default.
+
+```
+Client                                                   Server
+  |                                                        |
+  | ─── ClientHello ─────────────────────────────────────> | (1-RTT)
+  |     (Supported Ciphers + Key Share guess)              |
+  |                                                        |
+  | <── ServerHello (Cipher choice + Key Share selected) ── |
+  | <── Encrypted Extensions & Certificate ────────────── |
+  | <── Server Finished ────────────────────────────────── |
+  |                                                        |
+  | ─── Client Finished (Encrypted Data begins) ─────────> |
+  V                                                        V
+```
+
+#### How TLS 1.3 achieves 1-RTT:
+1. **Key Share Speculation:** Instead of sending a blank ClientHello to ask what key exchange algorithm the server supports, the client aggressively speculates. It sends its list of supported cipher suites AND immediately attaches its **Public Key Share** guesses (e.g., using popular curves like x25519 or secp256r1) directly inside the initial `ClientHello`.
+2. **Immediate Session Key Derivation:** The server receives the `ClientHello`. It selects a compatible curve from the client's guesses, combines it with its own generated ephemeral key, and immediately derives the symmetric master key.
+3. **Encrypted Parameters:** The server's response (`ServerHello`, Certificate, Signature, and Finished signals) is returned to the client and **encrypted** using this newly derived master key. This significantly minimizes cleartext metadata visible to network sniffers.
+4. **Cipher Suite Reduction:** TLS 1.3 reduced the list of permitted cipher suites from dozens of insecure choices in TLS 1.2 to only **5 highly secure AEAD (Authenticated Encryption with Associated Data)** ciphers (e.g., `TLS_AES_256_GCM_SHA384` and `TLS_CHACHA20_POLY1305_SHA256`).
+
+#### Complete Deprecation of Static RSA Key Exchange:
+In TLS 1.2, servers could use a static RSA key to decrypt client session keys, which broke **Perfect Forward Secrecy (PFS)**. TLS 1.3 **completely outlaws RSA key transport** and static Diffie-Hellman, making Ephemeral Diffie-Hellman (**ECDHE** or **DHE**) the only permitted key exchange mechanism.
+
+---
+
+### Zero-RTT (0-RTT) Resumption & Replay Attacks
+TLS 1.3 introduces **Zero-RTT (0-RTT) Resumption**, allowing a client who has previously connected to a server to transmit application data (such as an HTTP GET request) directly inside the *very first packet* of a reconnecting handshake, eliminating connection latency entirely.
+
+```
+Client                                                   Server
+  |                                                        |
+  | ─── ClientHello + Session Ticket ────────────────────> | (0-RTT!)
+  |     + Early Application Data (e.g., GET /index)        |
+  V                                                        V
+```
+
+#### The Replay Attack Vulnerability:
+Because 0-RTT data is sent before a fresh, synchronized handshake is established, it does not have the protection of a unique, newly negotiated key. It relies on a pre-shared key (PSK) generated from the *previous* session.
+
+```
+Client               Sniffer/Attacker               Server
+  |                         |                          |
+  | ─── GET /pay ──────────>| (Intercepts 0-RTT pkt)   |
+  |                         |                          |
+  |                         | ─── Replayed GET /pay ──>| (Executes payment)
+  |                         |                          |
+  |                         | ─── Replayed GET /pay ──>| (Executes payment AGAIN!)
+```
+
+1. **Interception:** An attacker on the local network sniffs the client's initial 0-RTT packet (containing the ClientHello, Session Ticket, and the encrypted data `POST /api/v1/checkout`).
+2. **Replay:** The attacker replicates this exact packet and forwards it to the server. Because the packet's cryptographic parameters are completely valid, the server accepts it, decrypts it, and executes the checkout transaction a second time.
+3. **Result:** The attacker can trigger multiple identical transactions or state mutations on the server without needing to crack the encryption.
+
+#### Engineering Mitigations against 0-RTT Replays:
+To safely run 0-RTT in production, you must implement the following safeguards:
+* **Enforce Strict Idempotency:** Load balancers and web servers (like Nginx) must be configured to **only allow 0-RTT on safe, idempotent HTTP methods (GET/HEAD)**. Any state-changing methods (`POST`, `PUT`, `DELETE`, `PATCH`) must be rejected if they arrive via 0-RTT and forced to undergo a full 1-RTT handshake.
+* **Single-Use Session Tickets (Anti-Replay Cache):** The server maintains a distributed, low-latency cache (like Redis) tracking the unique serial numbers of used Session Tickets. If a ticket is presented a second time within its expiration window, it is instantly rejected.
+* **Timestamp Windowing:** The server compares the timestamp embedded inside the session ticket with the current server time. If the drift exceeds a tight window (e.g., 2-5 seconds), the 0-RTT data is discarded.
+
 
 ---
 

@@ -69,13 +69,102 @@ If Client A is connected to Server 1, and Client B is connected to Server 2, Ser
 
 ---
 
-## 4. Popular Interview Questions & High-Impact Answers
+## 4. Why WebSockets Run Over TCP and Not UDP
+
+One of the most common system design questions is why the WebSocket protocol was designed on top of TCP rather than UDP, especially since real-time applications prioritize low latency.
+
+```
+┌────────────────────────────────────────────────────────┐
+│ Why TCP?                                               │
+├──────────────────────────┬─────────────────────────────┤
+│ 1. HTTP Compatibility    │ Start with HTTP GET Upgrade │
+│ 2. Reliability & Order   │ Guaranteed framing delivery │
+│ 3. Port Multiplexing     │ Uses port 80/443 (Firewalls)│
+│ 4. Congestion Control    │ Prevent network collapse    │
+└──────────────────────────┴─────────────────────────────┘
+```
+
+### 1. HTTP Upgrade Compatibility (The Handshake)
+The core requirement of the WebSocket protocol is that it must start with an HTTP Upgrade request (`101 Switching Protocols`). Because HTTP is structurally built on top of TCP, the initial WebSocket handshake *must* occur over a TCP connection. 
+UDP has no concept of a connection or structured request/response cycles. Trying to implement an HTTP upgrade over UDP would require implementing an entire custom session management layer.
+
+### 2. Message Framing and Strict Ordering
+WebSockets transmit discrete text or binary frames. If bytes arrive out of order, or if a single frame's header is lost, the parser cannot reconstruct the message, resulting in corrupt data or socket termination.
+* **TCP** guarantees that every packet is delivered and reassembled in the exact sequence it was sent.
+* **UDP** is completely packet-oriented and unordered. If a frame was split across multiple UDP packets and one packet was lost or arrived late, the entire WebSocket message would be corrupted.
+
+### 3. Firewall and Port Multiplexing (Standard Web Ports)
+WebSockets multiplex traffic over standard web ports: **80** (HTTP) and **443** (HTTPS).
+* Corporate firewalls and proxies are highly restrictive. They generally allow TCP port 443 through because it is standard HTTPS traffic. They routinely block arbitrary UDP ports to prevent DDoS attacks, DNS amplification, and security leaks.
+* Operating over TCP on port 443 ensures WebSockets work seamlessly on almost any internet connection worldwide without special network/firewall configurations.
+
+### 4. Built-in Congestion Control
+Stateful, real-time communication can transmit high volumes of data. Without TCP's sliding window and congestion control (Cubic/BBR), a massive burst of WebSocket messages could easily overwhelm intermediate network routers, resulting in packet drop cascades and network collapse.
+
+---
+
+## 5. Proxy/Reverse-Proxy Configuration (Nginx, AWS ALB, and Timeouts)
+
+When running WebSockets in production, you never expose the application server directly to the internet. You run it behind a load balancer or reverse proxy like Nginx or AWS Application Load Balancer (ALB). This requires custom protocol configuration.
+
+### 1. Nginx WebSocket Configuration
+By default, Nginx terminates connections after a short period of inactivity (typically 60 seconds). To keep a WebSocket open and allow headers upgrade, use this production-ready configuration:
+
+```nginx
+http {
+    # Map upgrade headers dynamically
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        ''      close;
+    }
+
+    upstream websocket_backend {
+        server 127.0.0.1:8080;
+        keepalive 32; # Keep-alive idle connections to backend
+    }
+
+    server {
+        listen 443 ssl;
+        server_name api.example.com;
+
+        location /ws/ {
+            proxy_pass http_websocket_backend;
+            
+            # Enable HTTP/1.1 (required for Upgrade)
+            proxy_http_version 1.1;
+            
+            # Forward WebSocket handshake headers
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+            
+            # Forward client IP metadata
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+            # Custom Timeout Adjustments
+            # Set to 1 day (86400s) so Nginx does not close idle connections
+            proxy_read_timeout 86400s;
+            proxy_write_timeout 86400s;
+        }
+    }
+}
+```
+
+### 2. AWS Application Load Balancer (ALB) Configuration
+AWS ALBs natively support WebSockets because they support HTTP/1.1. However, they enforce a default **Idle Timeout** of 60 seconds.
+* If no data is transmitted in either direction for 60 seconds, the ALB terminates the TCP connection.
+* **The Solution:** You must either increase the ALB's Idle Timeout in the AWS Console (up to a maximum of 4000 seconds) OR implement a periodic application-level keep-alive (Ping/Pong or custom heartbeat) every 30-50 seconds to keep the connection active.
+
+---
+
+## 6. Popular Interview Questions & High-Impact Answers
 
 ### Q1: How do you configure Load Balancers (like Nginx) to support WebSockets?
 * **Answer:** By default, load balancers expect short-lived, request-response HTTP connections. To support persistent WebSockets, you must:
-  1. **Configure Protocol Upgrades:** Instruct Nginx to forward the `Upgrade` and `Connection` headers to upstream servers.
-  2. **Enable Sticky Sessions (Session Affinity):** Ensure reconnecting client handshakes land on the same container if needed, or use a Redis backplane.
-  3. **Tune Timeouts:** Increase read/write timeouts (e.g., `proxy_read_timeout 86400s`) to prevent Nginx from forcefully dropping quiet connections due to inactivity.
+  1. **Configure Protocol Upgrades:** Instruct Nginx to forward the `Upgrade` and `Connection` headers to upstream servers (using the `map` directive in Nginx or setting headers explicitly).
+  2. **Enable Sticky Sessions (Session Affinity) if needed:** Ensure reconnecting client handshakes land on the same container if the application maintains local connection state, or decouple state via a Redis pub/sub backplane.
+  3. **Tune Timeouts:** Increase proxy read/write timeouts (e.g., `proxy_read_timeout 86400s`) so Nginx does not forcefully disconnect idle sessions.
 
 ### Q2: How does the WebSocket protocol handle connection "Keep-Alives" (Liveness)?
 * **Answer:** WebSockets natively support **Ping and Pong frames** at the protocol layer to detect dead connections (where the client crashes or loses Wi-Fi silently without sending a closing handshake):
