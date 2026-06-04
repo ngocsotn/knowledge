@@ -30,6 +30,94 @@ Docker is not a magic compiler; it is a user-friendly wrapper over two core **Li
 
 ---
 
+## 3. Deep-Dive: Linux Namespace, Cgroups v2, & OverlayFS Mechanics
+
+For staff-level systems engineering, you must understand exactly how the Linux kernel isolates processes, bounds memory/CPU, and layers filesystems under the hood.
+
+### 1. Namespaces and Filesystem Isolation (`clone` & `pivot_root`)
+When a container engine starts a container, it invokes the Linux **`clone()` syscall** rather than standard `fork()`. The `clone()` syscall allows child processes to execute in completely new, isolated kernel namespaces by passing specific execution flags:
+
+```c
+// Lower-level C representation of container creation syscalls
+int container_pid = clone(
+    container_main_function, 
+    stack_pointer_end, 
+    CLONE_NEWPID  | // Isolates Process IDs (Container PID 1 maps to Host PID 10425)
+    CLONE_NEWNET  | // Isolates network stack (creates unique loopback & eth0 routing)
+    CLONE_NEWNS   | // Isolates mount points (MNT namespace)
+    CLONE_NEWIPC  | // Isolates Interprocess Communication (System V IPC, POSIX message queues)
+    CLONE_NEWUTS  | // Isolates hostname and NIS domain name
+    CLONE_NEWUSER | // Isolates UID/GID mappings (Container root maps to unprivileged host UID)
+    SIGCHLD, 
+    arg_payload
+);
+```
+
+#### Filesystem Isolation: `chroot` vs. `pivot_root`
+* **`chroot` (Change Root):** Changes the active root directory directory path of the calling process to a specific sub-folder. **Security Gotcha:** `chroot` is insecure. Root processes can easily escape the jail using standard path traversals or nesting directory file descriptors.
+* **`pivot_root` (Pivot Mount):** Moves the root file system of the current process's mount namespace to a target directory, and moves the old root directory to a sub-folder. This makes the old filesystem completely unreachable, ensuring secure, absolute container filesystem sandboxing.
+
+---
+
+### 2. Cgroups v2 (Control Groups) Unified Architecture
+While Cgroups v1 used discrete, split directory hierarchies for each resource controller (CPU, Memory, IO), **Cgroups v2** implements a **single, unified controller hierarchy**, eliminating race conditions and simplifying resource configurations.
+
+```
+Unified cgroup v2 Directory Root: /sys/fs/cgroup/
+├── cgroup.procs              (Lists all host-wide process IDs)
+├── docker/                   (Docker container resource slice)
+│   ├── container_id_123/     (Individual container leaf cgroup)
+│   │   ├── cgroup.procs      (Stores process IDs running inside this container)
+│   │   ├── cpu.max           (Defines period-quota CPU limit, e.g. "50000 100000" = 0.5 CPU)
+│   │   ├── memory.max        (Defines maximum hard memory limit, e.g. "536870912" = 512MB)
+│   │   └── io.max            (Defines maximum read/write IO operations per second)
+```
+
+If a container exceeds the hard threshold defined in its local `memory.max` control file, the Linux kernel's **OOM (Out Of Memory) Killer** intercepts and terminates process `PID 1` inside the cgroup instantly, resulting in a container exit status code `137`.
+
+---
+
+### 3. OverlayFS (Layered Storage Engine) Mechanics
+To keep image storage small and builds fast, Docker uses **OverlayFS** to overlay multiple read-only filesystem layers into a single cohesive directory tree.
+
+```
+       Merged View Directory (What the container process actually sees)
+                     /sys/fs/overlay/merged/
+                               │
+               ┌───────────────┴───────────────┐
+               ▼                               ▼
+       Upperdir (Writable)             Lowerdir (Read-Only)
+    /var/lib/docker/overlay2/       /var/lib/docker/overlay2/
+         [container-layer]               [immutable-image-layers]
+               │
+               ▼
+       Workdir (Scratch)
+    /var/lib/docker/overlay2/
+         [scratch-space]
+```
+
+#### The Four OverlayFS Directories
+* **Lowerdir:** Immutable, read-only layers representing base OS and packages.
+* **Upperdir:** The read-write container runtime layer. Any changes, additions, or deletions go here.
+* **Workdir:** Internal scratch space used by OverlayFS to execute atomic file operations before committing changes to Upperdir.
+* **Mergeddir:** The unified virtual view. Linux merges Upperdir and Lowerdir into this directory, presenting a standard file structure to the container's processes.
+
+#### Copy-on-Write (CoW) Resolution Mechanics
+1. **File Read:**
+   * If a file exists in Upperdir, read it directly.
+   * If not in Upperdir, read it from Lowerdir with zero performance penalty.
+2. **File Modification (Copy-on-Write):**
+   * If a container process attempts to write to a file residing in the read-only Lowerdir, OverlayFS intercepts the write operation.
+   * It copies the target file from Lowerdir up to the writable Upperdir.
+   * The process then performs its write modifications directly on the Upperdir clone, hiding the original lower file.
+3. **File Deletion:**
+   * You cannot delete files from the read-only Lowerdir.
+   * To delete a file, OverlayFS writes a special **whiteout character device file** (major `0`, minor `0`) in the corresponding Upperdir path. The kernel detects this whiteout file and completely hides it from the Mergeddir view.
+
+---
+
+---
+
 ## 3. Image Layers & Multi-Stage Builds
 
 ### Docker Image Layers (Copy-on-Write)

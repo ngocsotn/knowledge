@@ -93,3 +93,18 @@ In distributed microservices, authentication and authorization are split to opti
 ### Q3: Explain how Refresh Token Rotation (RTR) prevents session hijacking.
 * **Answer:** Refresh Token Rotation ensures that refresh tokens are single-use-only. Every time a session is refreshed, a new refresh token is issued, and the old one is invalidated. If an attacker intercepts a refresh token, either the user or the attacker will eventually attempt to reuse an already-spent token. The Authorization Server immediately flags this reuse, assumes a breach has occurred, and revokes the entire token family (killing all active sessions for that user) to protect the account.
 
+### Q4: [Token JWT Invalidate] How do you handle JWT invalidation under high-throughput (e.g., millions of requests per minute) without turning JWTs back into stateful database-bound sessions?
+* **Answer:** You must use a **Hybrid Revocation Cache** pattern:
+  1. Enforce **short-lived Access Tokens** (e.g., 10 to 15 minutes) and longer-lived Refresh Tokens.
+  2. Implement an **append-only Redis-based Blacklist (Revocation Store)**. When a user logs out, deletes their account, or changes their password, write their specific token's unique ID (`jti`) or user ID to Redis with a TTL matching the token's remaining time-to-live (`exp - now`).
+  3. During request verification, instead of querying PostgreSQL, the gateway performs a sub-millisecond $O(1)$ read to verify if the token's `jti` is present in the Redis blacklist. If not blacklisted, the token is processed as valid and stateless.
+  4. This limits database-bound checking to only the refresh path, keeping 99% of access token requests completely stateless and incredibly fast.
+
+### Q5: [Asymmetric Key / JWKS Struggle] If your microservices fetch public keys from an Auth Server's JWKS (JSON Web Key Set) endpoint dynamically, how do you prevent JWKS endpoint network failure or rate-limiting from taking down your entire microservice authentication cluster?
+* **Answer:** This is a classic production failure mode. If the JWKS endpoint goes down, microservices cannot verify new tokens and return 500 errors. To resolve this:
+  1. **Caching with TTL:** Microservices must cache the fetched JWKS public keys in memory with a high TTL (e.g., 24 hours).
+  2. **Stale-While-Revalidate:** When a token is signed with a new key ID (`kid`), the microservice should attempt to fetch the new key in the background while continuing to trust existing cached keys.
+  3. **Circuit Breaker & Fallback:** If the Auth Server's JWKS endpoint throws errors, the microservice's fetch client trips a circuit breaker and serves stale keys from the cache.
+  4. **Key Rotation Grace Period:** When rotating keys on the Auth Server, keep the old public key active in the JWKS for at least 48 hours to allow microservices with cached keys to synchronize gracefully.
+
+

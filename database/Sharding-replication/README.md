@@ -151,7 +151,37 @@ Sharding is the process of breaking a single massive table into smaller, disjoin
 
 ---
 
-## 6. Popular Interview Questions & High-Impact Answers
+## 6. Advanced Sharding Challenges
+
+### A. The Resharding & Rebalancing Nightmare
+As a sharded database grows, you will eventually deplete disk/CPU capacity on your existing shards and must add new physical nodes to the cluster.
+1. **The Modulo Sharding Trap**: If your cluster uses simple modulo hashing (`hash(user_id) % K`), adding a single new database server (scaling from $K$ to $K+1$) changes the base of the modulo calculation. This forces **almost 90% of all existing keys to change their destination shard**, triggering massive, cluster-wide network and disk IO thrashing as rows migrate between servers, frequently taking down the production system.
+2. **The Consistent Hashing Solution**: By mapping servers and keys to a logical ring, adding a new node $S_{new}$ only intercepts keys belonging to its clockwise neighbor. To make the distribution perfectly even, **Virtual Nodes (vnodes)** are used: each physical server represents hundreds of scattered virtual points on the ring. Adding a server redistributes only $1/N$ of the total dataset, enabling smooth, zero-downtime background rebalancing.
+
+```
+       Consistent Hashing Ring (0 - 2^32)
+       
+                [Node A (vnode 1)]
+               /                  \
+   [Node C]───*                    *───[Node B]
+             /                      \
+            *                        *
+             \                      /
+              *────────────────────*
+                 [Node A (vnode 2)]
+```
+
+### B. Scatter-Gather Queries (The Latency Multiplier)
+* **Single-Shard Query**: Querying by the sharding key (e.g., `WHERE tenant_id = 'netflix'`) allows the router to target a single physical node immediately. Time complexity is isolated.
+* **Scatter-Gather (Non-Sharded Query)**: If you query a column that is *not* part of the sharding key (e.g., `WHERE email = 'alex@example.com'`), the database router does not know which shard owns the row.
+  1. The router is forced to **broadcast (scatter)** the query to **all $K$ shards** in parallel.
+  2. Each shard runs the query, consumes local CPU/RAM index blocks, and returns matching rows.
+  3. The router collects (gathers) all results, dedupes/merges them, and returns them to the application.
+* **The Tail Latency Problem**: The latency of a scatter-gather query is determined by the **slowest responding shard in the entire cluster (the p99.9 bottleneck)**. If one shard is undergoing a GC pause or background backup, the entire user query halts, cascading into severe tail-latency spikes.
+
+---
+
+## 7. Popular Interview Questions & High-Impact Answers
 
 ### Q1: What is "Replication Lag" and what anomalies can it cause in an application?
 * **Answer:** Replication lag is the delay between a write committing on the primary node and that write being applied to a secondary read replica. This can cause **Read-Your-Own-Writes anomalies**: if a user updates their profile (writing to primary) and immediately refreshes the page (reading from a lagging replica), they will see their old profile state, leading them to think the action failed. To prevent this, route critical user-owned reads to the primary node for a short period after a write.
@@ -175,3 +205,10 @@ Sharding is the process of breaking a single massive table into smaller, disjoin
 * **Answer:**
   - **Client-Side Routing:** The application contains sharding map logic. Highly performant ($O(1)$ lookup and direct connection to shard), but couples the client code directly to database topology, making updates difficult across massive service pools. Prefer for ultra-low latency requirements and stable, slowly changing database clusters.
   - **Proxy-Based Routing:** Clients connect to a centralized proxy (e.g., Vitess/PgBouncer) which abstracts the sharding topology. Simplifies client development (application treats database as one single massive monolith), but introduces an extra network hop and proxy processing overhead. Prefer for massive, dynamic, rapidly scaling microservice fleets where database operational abstraction is critical.
+
+### Q6: [Struggle Question] How do you execute high-performance searches on columns that are not part of the sharding key, avoiding the performance degradation of Scatter-Gather queries?
+* **Answer:** 
+  1. **Secondary Index Tables (Mapping Tables)**: Maintain a separate, highly indexable lookup table (or Redis cache) that maps the non-sharded attribute to the sharding key (e.g., mapping `email ──► tenant_id`). The client performs a sub-millisecond $O(1)$ lookup to find the `tenant_id`, then runs a single-shard query targeting that specific database node.
+  2. **Dual-Key Sharding (Replication)**: Write the same record to two separate indexes or clusters sharded differently. For example, store user data on Cluster A sharded by `tenant_id` (for operational tenant flows) and replicate/sync it to Cluster B sharded by `user_id` (for user-specific authentication flows).
+  3. **External Search Engine Indexing**: Stream database writes via Change Data Capture (CDC) into an external search cluster like Elasticsearch or Opensearch. Direct all complex search queries, multi-column filters, and text lookups to Elasticsearch, keeping the relational database isolated to direct single-shard OLTP writes.
+

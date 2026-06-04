@@ -72,3 +72,148 @@ A Kubernetes cluster is divided into two primary logical sections:
   2. It launches a small percentage of new pods (e.g., 25%).
   3. It waits for the new pods to pass their **Readiness Probes** (proving they are fully ready to accept user traffic).
   4. Once healthy, it directs the Service proxy to route traffic to the new pods and tears down a corresponding number of old pods. This process repeats incrementally until 100% of traffic is migrated, ensuring zero downtime.
+
+---
+
+## 5. Architectural Deep Dive: Kubernetes Internals
+
+For Senior/Staff infrastructure positions, you must understand the low-level communication loops, consensus consistency, and network packet paths inside the cluster.
+
+### 1. The Pod Lifecycle, Container Hooks, & Health Probes
+
+```
+                       Pod Created (Pending State)
+                                    │
+                                    ▼
+                        Run Init Containers (Seq)
+                                    │
+                                    ▼
+                      Main Container Startup (PostStart Hook)
+                                    │
+                                    ├──────────────────────────┐
+                                    ▼                          ▼
+                          Startup Probe (Blocks others)    PreStop Hook (On delete)
+                                    │                          │
+                                    ▼                          ▼
+                          Liveness / Readiness Probe       SIGTERM -> SIGKILL
+```
+
+#### Detailed Lifecycle Phases
+* **Pending:** Pod manifest accepted by API server, but container images downloading or scheduling not completed.
+* **Running:** Pod bound to a worker node, all containers initialized, and at least one container actively running or restarting.
+* **Succeeded:** All containers in the Pod terminated successfully with exit code `0` (typically run-to-completion Jobs).
+* **Failed:** At least one container terminated with a non-zero exit code.
+* **CrashLoopBackOff:** A container keeps crashing, forcing the Kubelet to wait with exponential backoff delay ($10s, 20s, 40s...$ capped at $5m$) before restarting it.
+
+#### Hooks & Graceful Termination
+1. **`PostStart` Hook:** Executes immediately after container creation. Runs asynchronously with the container's entrypoint (no order guarantee).
+2. **`PreStop` Hook:** Blocks the termination request. Triggered before the `SIGTERM` signal is dispatched. Ideal for flushing files, closing DB pools, or telling discovery endpoints to stop routing traffic to the pod.
+3. **Termination Sequence:** 
+   $$\text{PreStop Hook} \ \longrightarrow \ \text{SIGTERM} \ \longrightarrow \ \text{Wait terminationGracePeriodSeconds (default 30s)} \ \longrightarrow \ \text{SIGKILL}$$
+
+#### Triple Probes Hierarchy
+* **Startup Probe:** Checks if the application inside the container has fully initialized. **Blocks Liveness and Readiness probes** from running until it passes. Prevents slow-starting containers from being prematurely killed by Liveness probes.
+* **Liveness Probe:** Checks if the container needs a hard reboot. If it fails, Kubelet kills the container and initiates restart policies.
+* **Readiness Probe:** Checks if the container can accept HTTP/TCP traffic. If it fails, the Endpoint Controller **removes the Pod IP from the matching Service's routing table**, stopping all incoming user traffic from reaching it.
+
+---
+
+### 2. ETCD Consistency, Quorum, & Raft Architecture
+
+ETCD is a strongly consistent, distributed key-value storage engine using the **Raft consensus algorithm**.
+
+#### Quorum Formulation
+ETCD requires a **strict majority quorum** of active members to commit writes and elect leaders. This prevents split-brain partition corruptions:
+
+$$\text{Quorum} = \lfloor N/2 \rfloor + 1$$
+
+| Cluster Size ($N$) | Max Allowed Failures ($F$) | Quorum Needed | Why Odd Sizes are Mandatory |
+|:---:|:---:|:---:|---|
+| **3** | **1** | **2** | If split ($2$ and $1$), the majority group ($2$) still retains quorum and accepts writes. |
+| **4** | **1** | **3** | No extra fault tolerance over 3 nodes, but requires more network overhead. |
+| **5** | **2** | **3** | Can survive 2 node outages. |
+
+#### Write-Path Consensus Execution Flow
+1. **Client Proposal:** A write request is sent to `kube-apiserver`, which writes it to the ETCD Leader node.
+2. **AppendEntries RPC:** The Leader appends the entry to its local WAL (Write-Ahead Log) and broadcasts the entry to all Follower nodes.
+3. **Follower Verification:** Followers append the entry to their WALs and send an acknowledgment (ACK) back to the Leader.
+4. **Leader Commit:** Once the Leader receives ACKs from a **quorum** of nodes, it commits the entry to its state machine and replies success to the API Server.
+5. **Follower Apply:** The Leader notifies Followers to commit the entry to their local state machines on the next heartbeat.
+
+---
+
+### 3. Container Network Interface (CNI) & IP Packet Routing
+
+Kubernetes mandates that **every Pod gets a unique, routable IP address within the cluster**, eliminating host port conflicts.
+
+```
+┌───────────────────────────────── Worker Node ──────────────────────────────────┐
+│                                                                                │
+│   Pod A (Network Namespace)               Pod B (Network Namespace)            │
+│   ┌───────────────────────┐               ┌───────────────────────┐            │
+│   │        eth0           │               │        eth0           │            │
+│   └──────────┬────────────┘               └──────────┬────────────┘            │
+│              │ (veth pair)                           │ (veth pair)             │
+│              ▼                                       ▼                         │
+│         ┌────┴────┐                             ┌────┴────┐                    │
+│         │ veth_A  │                             │ veth_B  │                    │
+│         └────┬────┘                             └────┬────┘                    │
+│              │                                       │                         │
+│              ▼                                       ▼                         │
+│   ┌──────────┴───────────────────────────────────────┴──────────┐              │
+│   │                       cni0 (Bridge)                         │              │
+│   └──────────────────────────┬──────────────────────────────────┘              │
+│                              │                                                 │
+│                              ▼                                                 │
+│   ┌──────────────────────────┴──────────────────────────────────┐              │
+│   │                        eth0 (Physical)                      │              │
+│   └─────────────────────────────────────────────────────────────┘              │
+└────────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Node-Local Packet Path (Pod A to Pod B on same node)
+1. **Pod Virtual Interface:** Pod A dispatches an IP packet to its local virtual interface `eth0`.
+2. **Veth Pair Conduit:** The packet travels through a **veth (Virtual Ethernet) pair** connecting the Pod network namespace to the host network namespace (e.g., `veth_A`).
+3. **Host Bridge Routing:** The packet exits the host side of the veth pair and lands on the host network bridge (e.g., `cni0` or `docker0`).
+4. **Direct Bridge Forwarding:** The bridge reads the destination MAC/IP, determines the destination Pod B is attached to the same bridge, and forwards the packet through Pod B's veth conduit (`veth_B`) into Pod B's namespace.
+
+#### Inter-Node Packet Path (Pod A to Pod C on Node 2)
+1. **Default Gateway Forwarding:** If Pod C resides on a different node, the local bridge `cni0` realizes the subnet does not match, forwarding the packet to the node's main physical gateway interface `eth0`.
+2. **Overlay Encapsulation (VXLAN/Geneve) - *e.g., Flannel/Calico Overlay*:**
+   * The local CNI daemon encapsulates the raw pod-to-pod IP packet inside an outer **UDP packet** (destination port `4789`).
+   * The outer IP header sets the Source Node IP as the source and Target Node IP as the destination.
+   * This allows standard physical switches to route the packet across local subnets without knowing about Pod IP spaces.
+3. **Direct Routing (BGP) - *e.g., Calico Peer-to-Peer Routing*:**
+   * No UDP encapsulation overhead. 
+   * Nodes run a BGP (Border Gateway Protocol) client, advertising their local Pod subnets to all other nodes (acting as virtual routers).
+   * Packets travel raw and unencapsulated across the host physical network, resulting in higher throughput.
+
+---
+
+### 4. The Controller Reconciliation Loop Mechanics
+
+The Controller Manager operates on a continuous, level-triggered **Reconciliation Loop** designed to drive actual state towards the desired state.
+
+```
+ ┌───────────────┐
+ │ Desired State │ (defined in etcd manifest)
+ └───────┬───────┘
+         │
+         ▼
+  ┌─────────────┐       No change       ┌─────────────┐
+  │  Compare()  ├──────────────────────►│    Sleep    │
+  └──────┬──────┘                       └─────────────┘
+         │ Difference detected
+         ▼
+  ┌─────────────┐
+  │  Reconcile()│ (creates/deletes pods, adjusts network routing)
+  └─────────────┘
+```
+
+#### Low-Level Architecture (The Informer Pattern)
+To prevent overloading the API server with polling queries, controllers use **Informers**:
+1. **Reflector:** Initiates a `List` query to fetch initial resources and then establishes a persistent HTTP connection to `Watch` for real-time state change events (add, update, delete).
+2. **DeltaFIFO Queue:** Emitted watch events are pushed to a FIFO buffer queue.
+3. **Local Store (Indexer / Cache):** Events are consumed from DeltaFIFO, updating a fast, local in-memory cache of cluster resources. This ensures controllers query the local memory store instead of making heavy API server trips.
+4. **WorkQueue:** Changed resources are pushed to a workqueue where multiple worker threads dequeue them and execute the custom controller reconciliation function (`Reconcile(req)`), aligning cluster state.
+

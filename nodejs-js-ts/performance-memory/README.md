@@ -120,3 +120,74 @@ Debugging production memory leaks requires a systematic, scientific approach:
   - Allocates a raw chunk of shared binary memory that both the main thread and worker thread can read and write to directly.
   - **Mechanics**: No serialization or copying occurs. Access is synchronized using `Atomics` (e.g., `Atomics.wait()`, `Atomics.notify()`) to prevent race conditions and guarantee thread-safety.
   - *Performance*: Blazing fast, near zero overhead. Ideal for complex real-time computational work, image manipulations, and high-frequency binary operations.
+
+---
+
+## 5. Advanced OS Architecture: Processes vs. Threads
+
+Writing scaling backends requires understanding how the Operating System coordinates execution:
+
+### A. Process vs. Thread (Physical & Virtual Memory)
+
+| Feature | Process | Thread |
+| :--- | :--- | :--- |
+| **Memory Isolation** | Fully isolated **Virtual Memory Space** (Private heap, stack, file descriptors). Cannot read/write other processes' memory. | Shares the **Heap and Address Space** of its parent process. Each thread has only its private **Stack**. |
+| **Communication** | Heavy **IPC (Inter-Process Communication)**: Pipes, Unix Sockets, TCP/IP, Shared Memory Segments. | Instant, direct reading/writing of variables on the shared Heap (requires synchronization). |
+| **Context Switch Cost** | **High**: The OS scheduler must flush CPU caches, swap page tables, and clear the **Translation Lookaside Buffer (TLB)**. | **Low**: CPU caches and page tables are preserved; only registers and stack pointers are swapped. |
+| **Crashes** | Isolated: A crash in one process does not affect other processes. | Catastrophic: A segmentation fault or unhandled exception in one thread crashes the entire process. |
+
+### B. Control Groups (cgroups) & Containerization
+In modern DevOps (Docker, Kubernetes), processes are isolated using Linux Kernel namespaces and restricted using **cgroups (Control Groups)**:
+* **Namespaces**: Restrict what a process can *see* (PID namespace isolates process list, Mount namespace isolates file systems, Network namespace isolates ports).
+* **cgroups**: Restrict what a process can *use* (CPU cycles, RAM limits, Disk IOPS).
+* **OOM Killer (Out-of-Memory)**: If a container process (or Node.js worker) exceeds the physical RAM limits defined by its cgroup, the Linux kernel instantly terminates the process with **Exit Code 137 (SIGKILL)** to protect the rest of the OS.
+
+---
+
+## 6. Multi-Threaded vs. Single-Threaded Race Conditions
+
+### A. Memory-Level Race Conditions (Multi-Threaded)
+In multi-threaded languages (Go, Java, C++), multiple threads running on different CPU cores can read and write the exact same memory address simultaneously.
+* **The Problem**: A non-atomic operation like `count++` actually executes as three CPU instructions: `Read count`, `Increment value`, `Write count`. If two threads interleave, both read `0` and write `1`, causing a lost increment.
+* **The Solution**: Synchronize access using **Mutual Exclusions (Mutexes)**, **Semaphores**, or CPU-level hardware-level **Atomic CAS (Compare-And-Swap)** instructions.
+
+### B. Logical-Level Race Conditions (Single-Threaded Event Loop)
+Because JavaScript executes user code in a single-threaded loop, memory-level race conditions cannot occur. You do not need a Mutex to protect `count++`.
+* **The Problem (The Async Gap)**: **Logical race conditions** occur when you introduce asynchronous operations (`await`).
+
+```javascript
+// Vulnerable Code
+async function withdraw(userId, amount) {
+  const balance = await db.getBalance(userId); // <-- ASYNC GAP: Main thread yields!
+  if (balance >= amount) {
+    const newBalance = balance - amount;
+    await db.updateBalance(userId, newBalance);
+  }
+}
+```
+
+* **The Disaster**:
+  1. Client sends Request 1 to withdraw $100. The server fetches balance ($100), sees it's enough, and yields at `await db.getBalance()`.
+  2. Client sends Request 2 immediately. The server processes Request 2, fetches balance (still $100 on DB), sees it's enough, and yields.
+  3. Both requests resume, calculate `100 - 100 = 0`, and write `0` back to the DB—allowing the user to double-spend and withdraw $200!
+* **The Solution**: 
+  1. **Database Locking**: Use `SELECT ... FOR UPDATE` in PostgreSQL to lock the user's row during the read.
+  2. **Application-Level Mutex (In-Memory)**: Use an in-memory lock library like `async-mutex` to ensure only one thread can run the withdraw function per `userId` at any given time.
+
+---
+
+## 7. Popular Interview Questions & High-Impact Answers (Extended)
+
+### Q4: Explain how cgroups and Kubernetes memory limits affect a Node.js process. What happens if V8's heap limit is higher than the cgroup memory limit?
+**Answer**:
+This is a common cause of mysterious production crashes. 
+* By default, V8 (Node.js) adjusts its maximum heap size based on the physical RAM it detects on the host.
+* If a container is restricted by a cgroup memory limit of **512MB**, but the host machine has **16GB** of RAM, Node.js might configure its V8 Max Old Space Limit to **4GB**.
+* Under load, as Node.js allocates memory, it will exceed 512MB. Since it is still far below its 4GB V8 limit, V8 will *not* trigger garbage collection.
+* However, once memory hits 512MB, the Linux kernel's **cgroup manager** intervenes and instantly terminates the process with a **SIGKILL (Exit Code 137)**.
+* **The Solution**: Always align V8's memory limits with container cgroup limits using the `--max-old-space-size` flag, setting it to roughly 75-80% of the container limit to leave room for native buffers, streams, and C++ bindings (e.g., `node --max-old-space-size=400 server.js` for a 512MB container).
+
+### Q5: Since Node.js is single-threaded, how can a race condition ever occur? Give a concrete example.
+**Answer**:
+While Node.js is single-threaded at the JavaScript execution level (meaning no two lines of JS run concurrently, avoiding CPU memory collisions), **logical race conditions** occur because of the **asynchronous gap** introduced by the event loop. When a function executes an `await` statement, it yields the main thread back to the event loop, allowing subsequent incoming HTTP requests to interleave and execute code. If both requests read a shared state (like a user's bank balance) before either can commit the updated state, they will both operate on stale data, leading to anomalies like double-spending or duplicate account creation.
+

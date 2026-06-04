@@ -117,3 +117,25 @@ If two concurrent write requests attempt to update the same record in an **updat
 **Answer**:
 Write-back caching is ideal for write-heavy systems where database write performance is a major bottleneck, such as multiplayer game state updates, IoT telemetry ingestion, or real-time analytics tracking. The primary danger is **data loss**: because the write is acknowledged as successful once stored in volatile RAM, any power outage, node crash, or container restart before the asynchronous database sync completes results in unrecoverable data loss.
 
+### Q4: [Caching Invalidation Dilemma] Between "Delete Cache, then Update DB" and "Update DB, then Delete Cache", which sequence is safer for Cache-Aside systems, and what race condition can still occur?
+**Answer**:
+* **Update DB, then Delete Cache (Safer - Standard)**: 
+  * If this fails, the worst case is the cache contains stale data until its TTL expires.
+  * **The Split-Second Race Condition**:
+    1. Cache is empty.
+    2. Client A performs a read, gets a cache miss, and reads the *old value* (e.g., `10`) from the database.
+    3. Client B updates the database to `20` and immediately deletes the cache key.
+    4. Client A (delayed by network) writes its stale read value (`10`) back into the cache.
+    * *Result*: The cache has stale value `10` permanently, while the DB has `20`.
+    * *Mitigation*: Use extremely short TTLs or a **Cache-Aside with Mutex Lock (or Singleflight)** during cache rebuilds.
+* **Delete Cache, then Update DB (Unsafe)**:
+  * Highly vulnerable: Client A deletes the cache key. Client B reads the key, hits a cache miss, reads the *old value* from the DB, and writes it back to the cache before Client A can commit the new value to the DB. The cache stays stale indefinitely.
+
+### Q5: [Caching Method Scenarios] Describe the target production scenarios where you would choose each of the four core caching methods.
+**Answer**:
+1. **Cache-Aside**: Best for **general-purpose, read-heavy applications** with highly dynamic data where occasional cache misses are acceptable (e.g., e-commerce product catalogs, social media user profiles).
+2. **Read-Through**: Best for **microservice clusters** where you want to decouple the data access logic from the core business logic. The application treats the cache as a unified data gateway, simplifying core service code.
+3. **Write-Through**: Best for **critical transactional systems** with strict consistency requirements where data is written once but read frequently (e.g., financial ledger balances, active user session details, real-time inventory systems). Bypasses stale cache reads completely.
+4. **Write-Back (Write-Behind)**: Best for **ultra-high write-throughput applications** where database disk IO is the absolute system bottleneck and minor data loss during a crash is acceptable (e.g., streaming view counts, multiplayer game coordinates, tracking real-time user clickstreams, IoT sensor telemetry ingestion).
+
+

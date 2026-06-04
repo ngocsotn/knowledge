@@ -301,3 +301,214 @@ Your organization is building a massive enterprise platform managed by five inde
 > To isolate styling and global scripts, each microfrontend component is wrapped in an open **Shadow DOM** and executed inside a **Proxy-based window sandbox**. The proxy captures global modifications (like modifying `window.location` or setting global variables) and scopes them strictly to a virtual state object dedicated to that microfrontend, leaving the true global window clean.
 > 
 > To handle runtime script crashes, the host shell wraps all dynamic remote imports within React **Error Boundaries** or Svelte error recovery blocks. If Microfrontend A throws a fatal uncaught JavaScript exception, the error boundary catches it, displays a localized, elegant 'Component Temporarily Unavailable' fallback panel, and logs the crash telemetry, while keeping the rest of the application fully functional."
+
+---
+
+## Scenario 5: Scaling a High-Throughput Distributed Telemetry & Tracing Aggregator
+
+### 1. Problem Statement
+Your company is designing a high-performance distributed tracing ingestion engine (similar to OpenTelemetry Collector) that receives 1,000,000 trace spans per second.
+* **The Telemetry Bottleneck:** Raw trace data written directly to a database causes instant storage disk exhaustion and random IO bottlenecks.
+* **The Thread Concurrency Risk:** The ingestion service must handle massive parallel requests. If thread synchronization (locks) is used naively, execution stalls on contention. You must explain the core difference between **OS processes** and **threads**, and how **race conditions** are resolved in single-threaded event loops (JS) vs. multi-threaded runtime schedulers (Go).
+* **The Message Queue & Caching Pattern:** You need to ingest telemetry asynchronously. You must compare message queue patterns (**Fire-and-Forget**, **Work Queues**, and **Publish-Subscribe**) and apply advanced caching strategies (**Cache-Aside**, **Write-Through**, and **Write-Behind**) to buffer trace metrics before persistence.
+
+---
+
+### 2. High-Impact Architectural Solution
+
+#### Tracing Aggregator Architecture Diagram
+```
+                     1,000,000 Spans/sec (HTTP/gRPC)
+                                 │
+                                 ▼
+                     ┌───────────────────────┐
+                     │   Ingestion Workers   │ (Go Goroutines, Zero shared state)
+                     └───────────┬───────────┘
+                                 │
+                         (Fire-and-Forget)
+                                 │
+                     ┌───────────▼───────────┐
+                     │   Kafka Spans Topic   │ (Partitioned by trace_id)
+                     └───────────┬───────────┘
+                                 │
+                           (Work Queues)
+                                 │
+                     ┌───────────▼───────────┐
+                     │   Telemetry Collectors│ (Processes in Cgroups v2)
+                     └───────────┬───────────┘
+                                 │
+                         (Write-Behind Cache)
+                                 │
+             ┌───────────────────┴───────────────────┐
+             ▼                                       ▼
+   ┌───────────────────┐                   ┌───────────────────┐
+   │    Redis Cache    │                   │  ClickHouse OLAP  │
+   │ (Sliding-window)  │                   │ (Batch insert)    │
+   └───────────────────┘                   └───────────────────┘
+```
+
+1. **Process vs. Thread Concurrency:**
+   * **Process:** An isolated execution unit with its own virtual memory space, file descriptor table, and security context allocated by the OS. Processes communicate via heavy IPC (Sockets, Pipes, Shared Memory).
+   * **Thread:** A lightweight unit of execution within a process that shares the parent process's memory space (heap, global variables).
+   * **Race Conditions:** Occur when multiple execution branches modify shared memory concurrently without synchronization.
+     * *In JS (Single-Threaded Event Loop):* Race conditions cannot occur on raw memory access because only one task runs at a time. However, logical race conditions occur across asynchronous `await` network boundaries if state transitions between asynchronous ticks.
+     * *In Go (Multi-Threaded Goroutines):* True memory race conditions occur when multiple goroutines write to the same map or struct. Resolved using channels (Share memory by communicating) or primitive `sync.Mutex` locks.
+2. **Message Queue Ingestion Pattern:**
+   * **Fire-and-Forget:** Ingestion API writes to Kafka and immediately responds `202 Accepted` to clients without waiting for disk flush. Prevents upstream clients from blocking.
+   * **Work Queues:** Telemetry collector processes act as standard workers consuming partitions from Kafka. Kafka load-balances spans across consumer threads using consumer group coordination.
+3. **Write-Behind (Write-Back) Caching:**
+   * Collectors buffer spans in a memory ring buffer. Once the buffer hits 10,000 spans or 500ms has elapsed, the collector flushes the entire batch to **ClickHouse** (OLAP column-oriented database) in a single transaction. This converts random disk IO into sequential, high-speed block writes.
+
+---
+
+### 3. Interview Q&A Script & Struggle Questions
+
+**Interviewer:** *"How do you handle memory limits in your telemetry collectors to prevent the host OS from triggering the OOM killer under sudden traffic spikes?"*
+
+**Your Verbal Response:**
+> "I implement a **Memory-Limiter Processor** inside each collector process combined with Linux **Cgroups v2** sandboxing.
+> 
+> In the collector config, I set a hard memory limit threshold (e.g., 80% of the cgroup's limit). The process runs a continuous background thread monitoring Go runtime heap allocation metrics. If memory usage exceeds this threshold, the collector halts ingestion from Kafka (applying **backpressure**), drops voluntary logging, and aggressively forces garbage collection. This prevents the process from reaching 100% memory allocation, avoiding an uncatchable host `SIGKILL` (OOM exit code 137). If Kafka queues fill up, the ingestion gateway falls back to dropping spans via tail-sampling to keep core APIs alive."
+
+**Struggle Question:** *"If ClickHouse crashes, how do you prevent losing buffered spans in your Write-Behind cache?"*
+* **Answer:** You must never write solely to volatile memory in a Write-Behind architecture. The ingestion gateways stream spans to **Kafka** first (durable, persisted WAL disk partition logs). If the collectors crash or ClickHouse is offline, the consumers simply stop committing offsets back to Kafka. Once ClickHouse recovers, the collectors resume reading from the last uncommitted offset, completely eliminating data loss.
+
+---
+
+## Scenario 6: High-Availability Multi-Region Database Sync & Change Data Capture (CDC)
+
+### 1. Problem Statement
+Your system manages a global e-commerce database. You must scale writes across multiple regions while keeping read latency below 50ms.
+* **The Index & Random IO Problem:** You need to optimize performance. You must explain how **Clustered Indexes** compare to **Secondary Indexes** in MySQL/PostgreSQL, and why deep index trees cause **Random Disk IO** and **Index Fragmentation**.
+* **The Lock & MVCC Conflict:** Under high concurrent writes, users face **SQL Race Conditions** (Lost Updates, Write Skew). You must explain how **Multi-Version Concurrency Control (MVCC)** isolates transactions, how **Row-Level Blocking/Locking** works, and how **Deadlocks** occur and are resolved.
+* **The Sharding Strategy:** When single-node databases hit hardware limits, you must design a **Database Sharding** strategy.
+
+---
+
+### 2. High-Impact Architectural Solution
+
+#### Multi-Region Change Data Capture (CDC) Topology
+```
+           Region 1 (Primary Write Node)            Region 2 (Read Replica Node)
+         ┌─────────────────────────────┐         ┌─────────────────────────────┐
+         │      PostgreSQL Master      │         │      PostgreSQL Replica     │
+         │ - Clustered Index on PK     │         │ - Secondary Index on Email  │
+         │ - MVCC (Multi-Version)      │         │ - Read-Only isolation       │
+         └──────────────┬──────────────┘         └──────────────▲──────────────┘
+                        │                                       │
+                (WAL Log Shipping)                              │ (Apply updates)
+                        ▼                                       │
+         ┌─────────────────────────────┐         ┌──────────────┴──────────────┐
+         │     Debezium CDC Engine     │──►Kafka──►   Region 2 Sync Consumer   │
+         │ (Parses WAL byte stream)    │         │                             │
+         └─────────────────────────────┘         └─────────────────────────────┘
+```
+
+1. **Clustered vs. Secondary Indexing Internals:**
+   * **Clustered Index:** Stores the actual physical table row data directly inside the leaf nodes of the B+Tree index structure. A table can have **only one** clustered index (usually the Primary Key).
+   * **Secondary Index:** Stores only the index keys and a pointer reference back to the corresponding clustered index primary key. 
+   * **Random IO Bottleneck:** When querying via a Secondary Index (e.g., `SELECT * WHERE email = 'x'`), the database performs an index seek to find the primary key, and then must perform a separate random disk seek (Key Lookup) to retrieve the rest of the columns from the clustered index leaf.
+   * **Index Fragmentation:** High volumes of random `INSERT` or `UPDATE` statements split B+Tree leaf nodes, leaving empty spaces and non-contiguous disk layout. This causes slow range-scan queries because the disk head must jump around (Random IO). Resolved by periodic index defragmentation (`REINDEX` / `OPTIMIZE TABLE`).
+2. **MVCC and SQL Race Conditions:**
+   * **MVCC (Multi-Version Concurrency Control):** Instead of locking tables for reads, the database keeps multiple versions of a row. When a transaction starts, it receives a snapshot timestamp. It reads the latest row version that is older than its snapshot, completely avoiding read-write locking bottlenecks.
+   * **SQL Row-Level Locking:** Under write-heavy paths, transactions invoke `SELECT FOR UPDATE` to acquire an exclusive write lock on a specific row, blocking concurrent transactions from editing that row.
+   * **Deadlocks:** Occur when Transaction A locks Row 1 and waits for Row 2, while Transaction B has locked Row 2 and waits for Row 1. Resolved by database **Deadlock Detectors** running cycle-detection graphs; the engine automatically terminates the transaction with the least work, issuing a rollback.
+3. **Database Sharding:**
+   * Partition tables horizontally across independent database servers using a **Shard Key** (e.g., hash of `tenant_id` or `user_id`). This distributes read/write traffic uniformly, but queries spanning multiple shards require complex application-side joins.
+
+---
+
+### 3. Interview Q&A Script & Struggle Questions
+
+**Interviewer:** *"If two concurrent transactions try to deduct $10 from the same bank account balance, how do you prevent the Lost Update race condition without locking the entire table?"*
+
+**Your Verbal Response:**
+> "I reject table-level locks and utilize **Optimistic Concurrency Control (OCC)** or **Pessimistic Row-Level Blocking** based on write collision density.
+> 
+> For low-to-medium contention paths, I use Optimistic Locking via a version check column:
+> ```sql
+> UPDATE accounts SET balance = balance - 10, version = version + 1 
+> WHERE id = 456 AND version = 3;
+> ```
+> If a concurrent transaction edited the row first, the version has updated to 4. The query updates 0 rows, prompting the application to catch the collision, retrieve the new state, and retry the operation safely.
+> 
+> Under extremely high contention where retry loops degrade CPU performance, I fall back to Pessimistic Locking using `SELECT FOR UPDATE`. This blocks concurrent readers from acquiring write locks on that row, enforcing sequential execution."
+
+**Struggle Question:** *"What is the Write Skew anomaly in MVCC, and how do you resolve it?"*
+* **Answer:** Write Skew occurs under REPEATABLE READ isolation level. Suppose a doctor on-call rotation requires at least 1 active doctor. Doctor A and Doctor B both see that 2 doctors are active. Both attempt to check out simultaneously in separate transactions. Since they edit different rows, no row-level locks conflict. Both checkouts succeed, leaving 0 doctors on-call. To resolve this, you must escalate the transaction isolation level to **SERIALIZABLE**, which uses predicate locks to detect snapshot dependencies, or use explicit row locks (`SELECT FOR UPDATE`) on a shared state row to force serialization.
+
+---
+
+## Scenario 7: Multi-Tenant Enterprise SaaS with Distributed Locks & Token Invalidation
+
+### 1. Problem Statement
+Your team is building a multi-tenant cloud-native enterprise SaaS platform.
+* **The Tenant Isolation Dilemma:** You must decide how to architect tenant data isolation. You must compare **Physical Isolation** (database-per-tenant) vs. **Logical Isolation** (shared database with tenant routing columns).
+* **The Asymmetric JWT Key Verification:** Tenants authenticate using single-sign-on (SSO). You must implement **Asymmetric Key (RSA/ECDSA)** verification where identity providers sign JWTs using private keys, and your microservices validate them using public keys (JWKS).
+* **The JWT Token Invalidation Strategy:** JWTs are stateless. If a tenant user is terminated, you must immediately invalidate their JWT across all services.
+* **The Tenant-Scoped Distributed Lock:** Multiple workers handle tenant background tasks. You must implement a **Distributed Lock** pattern to prevent tenant race conditions across server nodes.
+
+---
+
+### 2. High-Impact Architectural Solution
+
+#### Multi-Tenant Security & Lock Topology
+```
+                  Tenant User Authentication (SSO)
+                                 │
+                                 ▼
+                     ┌───────────────────────┐
+                     │   Identity Provider   │ (Signs JWT with Private Key)
+                     └───────────┬───────────┘
+                                 │
+                        (Dispatches JWT)
+                                 │
+                     ┌───────────▼───────────┐
+                     │   Gateway / Services  │ (Validates JWT using JWKS Public Key)
+                     └───────────┬───────────┘
+                                 │
+                       (Fetch tenant_id)
+                                 │
+             ┌───────────────────┴───────────────────┐
+             ▼                                       ▼
+   ┌───────────────────┐                   ┌───────────────────┐
+   │   Redis Cluster   │                   │ PostgreSQL Cluster│
+   │ - Token Blacklist │                   │ - Shared Schema   │
+   │ - Redlock Engine  │                   │ - Row-Level Sec   │
+   │   (Tenant lock)   │                   │   (tenant_id index│
+   └───────────────────┘                   └───────────────────┘
+```
+
+1. **Multi-Tenant Isolation Models:**
+   * **Database-per-Tenant (Physical):** Highest security, zero cross-tenant data leakage risks, custom schema migrations per client, but extremely high operational cost and resource under-utilization.
+   * **Shared Database, Shared Schema (Logical):** Lowest cost, scales to millions of tenants. Data is isolated using a `tenant_id` index column on every table. Enforced via database-native **Row-Level Security (RLS)** policies that automatically inject `WHERE tenant_id = current_tenant()` constraints into all execution paths.
+2. **Asymmetric Key Validation:**
+   * Identity provider signs JWTs using a private key (e.g., RS256).
+   * Microservices periodically pull the provider's active public keys from a **JWKS (JSON Web Key Set)** endpoint.
+   * Microservices validate the cryptographic signature locally without making a synchronous network trip to the Identity Provider, keeping authentication fast.
+3. **Stateless JWT Token Invalidation Pipeline:**
+   * **Active Session Check:** Maintain a Redis-backed **Token Blacklist** / **Revocation Store**.
+   * On user logout or termination, the API Gateway writes the token's JTI (unique JWT ID) or signature hash to Redis with a TTL matching the token's remaining expiration time.
+   * On every request, the gateway does a fast $O(1)$ read to check if the incoming token is blacklisted.
+   * **Refresh Token Rotation (RTR):** Short-lived JWTs (e.g., 15m) are paired with long-lived refresh tokens. Each refresh request rotates the refresh token. If a hijacked refresh token is reused, the rotation engine detects the conflict and instantly invalidates the entire token lineage.
+4. **Tenant-Scoped Distributed Locks:**
+   * To prevent parallel background workers from corrupting tenant billing stats, we acquire a distributed lock using **Redis Redlock**:
+     * Set a unique key `lock:tenant:123` with a random string value and a strict TTL using the `SET key value NX PX 10000` atomic command.
+     * When unlocking, run a Lua script to ensure the lock is deleted *only* if the stored value matches the caller's unique random string, preventing race conditions where Worker A deletes Worker B's expired lock.
+
+---
+
+### 3. Interview Q&A Script & Struggle Questions
+
+**Interviewer:** *"Why is a database-backed distributed lock insecure, and how does Redis Redlock resolve cluster node failures?"*
+
+**Your Verbal Response:**
+> "A database table-based distributed lock is prone to zombie deadlocks if a worker crashes before deleting its lock row. 
+> 
+> A single-instance Redis lock is vulnerable to data loss during leader-follower failovers because Redis replication is asynchronous. If Worker A acquires a lock on the master node and the master crashes before replicating the key to the follower, the follower is promoted to master. Worker B can now acquire the same lock, violating mutual exclusion.
+> 
+> **Redis Redlock** resolves this by checking a majority of independent Redis nodes (e.g., 5 nodes). Worker A must acquire the lock on at least 3 out of 5 nodes. The lock is only considered valid if acquired within a small fraction of the total lock lease time. This guarantees that even if a single Redis node crashes or fails to replicate, the mutual exclusion invariant is strictly preserved."
+
+**Struggle Question:** *"If a tenant user updates their tenant_id in their local browser storage, how do you prevent them from accessing another tenant's data?"*
+* **Answer:** You must **never** trust user-supplied parameters from client-side state. The `tenant_id` must be stored securely inside the payload of the cryptographically signed JWT. During gateway token verification, the JWT's signature is verified against the JWKS public key. The microservice then extracts the `tenant_id` from the secure token payload and injects it directly into the context of the database query, rendering client-side tampering impossible.
+

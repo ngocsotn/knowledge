@@ -55,6 +55,121 @@ Modern databases use two primary concurrency architectures:
 
 ---
 
+## 5. Multi-Version Concurrency Control (MVCC) Under the Hood
+
+### A. Row Version Metadata (PostgreSQL xmin/xmax vs. MySQL Undo Logs)
+
+Relational engines implement MVCC differently, each with major architectural trade-offs:
+
+#### 1. PostgreSQL (Append-Only Tuples)
+* Every physical table row (tuple) contains hidden metadata columns:
+  * `xmin`: The transaction ID (TxID) that inserted/created this version of the row.
+  * `xmax`: The transaction ID that deleted or updated (which is a delete + insert) this version.
+* **Update Process**: PostgreSQL does not overwrite the row. It writes a completely new tuple to disk. It sets the `xmax` of the old tuple to the current TxID and sets the `xmin` of the new tuple to the current TxID.
+* **The Drawback (Vacuuming)**: Since updated/deleted tuples are left on disk (known as **Dead Tuples**), PostgreSQL requires a background process called **VACUUM** (or Autovacuum) to scan tables, clean up unneeded old tuple versions, and reclaim disk space. High update volume can trigger "Vacuum bloat" and degrade performance.
+
+#### 2. MySQL InnoDB (In-Place Updates with Undo Logs)
+* InnoDB updates rows **in-place** to avoid physical table bloat.
+* **Update Process**: It writes the new row directly inside the table page, but writes the old version of the row to a separate sequential buffer called the **Undo Log** (or Rollback Segment).
+* Each row header stores a `roll_ptr` pointer pointing to its previous version in the Undo Log.
+* **The Benefit**: Table files do not suffer from tuple bloat; dead versions are stored sequentially and purged automatically when no active transactions need them.
+
+### B. Read Views and Visibility Rules
+When an MVCC transaction begins, the database generates a **Read View (Active Transaction List Snapshot)**.
+* Any changes made by transactions that committed *before* our Read View was created are **visible**.
+* Any changes made by transactions that are still active or started *after* our Read View was created are **invisible**.
+* During execution, the engine traverses the version chain (using `xmin/xmax` or the Undo Log `roll_ptr`) until it finds the first version that is visible to our Read View.
+
+---
+
+## 6. SQL Row-Level Locking (Pessimistic Locking)
+
+When optimistic MVCC is insufficient to prevent race conditions, databases use explicit lock mechanisms:
+
+### A. Lock Types and Modes
+1. **Shared Locks (S - Read Lock)**:
+   * Multiple transactions can hold S-locks on the same row simultaneously.
+   * Prevents other transactions from writing to the row.
+   * *SQL Syntax*: `SELECT ... FOR SHARE` (PostgreSQL) or `SELECT ... LOCK IN SHARE MODE` (MySQL).
+2. **Exclusive Locks (X - Write Lock)**:
+   * Only one transaction can hold an X-lock on a row.
+   * Prevents other transactions from reading or writing.
+   * *SQL Syntax*: `SELECT ... FOR UPDATE`.
+3. **Intent Locks (IS / IX - Table Level)**:
+   * Before acquiring a row-level S or X lock, a transaction must acquire an **Intent Shared (IS)** or **Intent Exclusive (IX)** lock on the *table*.
+   * This allows the database to check if a table-level lock can be granted without scanning millions of individual rows to see if any are locked.
+
+### B. Row Lock Contention & Escalation
+* **Contention**: Under high write volume, many threads waiting for the same row-level exclusive lock (e.g., updating a hot merchant account balance) will queue up. This depletes the application connection pool, spiking latency.
+* **Lock Escalation**: In some databases (like SQL Server), if a query acquires too many individual row locks (usually > 5,000), the engine automatically escalates them into a single table-level lock to save memory—completely blocking all concurrent writes. (PostgreSQL and MySQL InnoDB do *not* escalate locks; they can hold millions of row locks without memory overhead).
+
+---
+
+## 7. Advanced Database Race Conditions (Anomalies)
+
+Even under Repeatable Read isolation, databases are vulnerable to two sophisticated race conditions:
+
+### A. Lost Update Anomaly
+
+```
+Tx 1 (Balance: 100)                      Tx 2 (Balance: 100)
+ │                                        │
+ ├─── Read Balance (100)                  │
+ │                                        ├─── Read Balance (100)
+ ├─── Add 50 locally (150)                │
+ ├─── Commit Write (150)                  │
+ │                                        ├─── Add 20 locally (120)
+ │                                        └─── Commit Write (120)  <─── Overwrites Tx 1!
+```
+
+* **The Problem**: Two transactions concurrently read the same record, perform separate calculations, and write back updates. The second transaction's write silently overwrites the first transaction's work, losing the balance update.
+* **The Solution**:
+  1. **Pessimistic Locking**: Use `SELECT balance FROM accounts WHERE id = 1 FOR UPDATE` to block Tx 2 until Tx 1 commits.
+  2. **Optimistic Concurrency Control (OCC)**: Add a `version` column.
+     `UPDATE accounts SET balance = 150, version = version + 1 WHERE id = 1 AND version = current_version;`
+     If another transaction updated the row first, the version check fails, and we retry.
+
+### B. Write Skew Anomaly (The Silent Serializable Killer)
+Write Skew is a highly technical anomaly that occurs under **Repeatable Read** but is prevented under **Serializable**.
+
+* **The Invariant**: A medical clinic requires at least one doctor to be active on call.
+* **The Starting State**: Both Doctor A and Doctor B are currently active (On Call count = 2).
+
+```
+Tx 1 (Doctor A)                          Tx 2 (Doctor B)
+ │                                        │
+ ├─── SELECT COUNT(*) On Call (Gets 2)     │
+ │    (Count >= 2, safe to check off)     ├─── SELECT COUNT(*) On Call (Gets 2)
+ │                                        │    (Count >= 2, safe to check off)
+ ├─── UPDATE Doc A SET status = 'Offline'  │
+ ├─── Commit                              ├─── UPDATE Doc B SET status = 'Offline'
+ │                                        └─── Commit
+```
+
+* **The Disaster**: Both transactions commit successfully because they updated *different, non-overlapping rows* (Tx 1 updated Doc A, Tx 2 updated Doc B). However, the invariant is violated: **zero** doctors are now on call.
+* **The Solution**:
+  1. **Pessimistic Locking**: Force row-level locking on the shared condition during query: `SELECT * FROM doctors WHERE status = 'On Call' FOR UPDATE`.
+  2. **Serializable Isolation**: Force the engine to monitor read sets and abort one of the transactions on validation failure.
+
+---
+
+## 8. Popular Interview Questions & High-Impact Answers (Extended)
+
+### Q4: Explain the difference between PostgreSQL and MySQL InnoDB in how they implement MVCC. What are the operational implications of each?
+* **Answer:** PostgreSQL implements MVCC using **Append-Only Tuples**: updating a row creates a completely new physical row on disk and marks the old one as dead. This requires active **VACUUMing** to reclaim space, leading to table bloat and high disk write overhead if not tuned. MySQL InnoDB uses **In-Place Updates with Undo Logs**: the table row is overwritten directly, and the historical version is saved sequentially to a shared Undo Log file. InnoDB avoids table bloat, but long-running transactions can cause the Undo Log space to expand dramatically as the database must preserve history chains.
+
+### Q5: What is "Write Skew", and why does the standard "Repeatable Read" isolation level fail to prevent it?
+* **Answer:** Write Skew is an anomaly where two concurrent transactions read the same data, verify a shared business invariant, update *different, non-overlapping rows*, and commit. Because they mutate different records, row-level locks do not conflict, and under Repeatable Read, both transactions can commit successfully—violating the business invariant. Repeatable Read fails to prevent Write Skew because it only guarantees that *existing* rows read by a single transaction will not change; it does not coordinate locks or serialize across independent rows based on shared query constraints.
+
+### Q6: [Struggle Question] Under high-throughput systems, how do you prevent "Hotspot Lock Contention" on a single database row (e.g., a globally shared balance or stock ledger)?
+* **Answer:** 
+  1. **Row Sharding / Distributed Counters**: Instead of one row storing `balance = 1000000`, split the ledger into $N$ separate rows (shards), e.g., `balance_shard_1`, `balance_shard_2`, etc. Transactions randomly update one of the shards, reducing lock contention by a factor of $N$. The true balance is computed using a fast `SUM(balance)` range scan.
+  2. **Async Batching (Write-Behind)**: Queue updates in an in-memory buffer (like Redis or Kafka). Periodically merge/aggregate the increments (e.g., 10,000 increments of +1) and run a single consolidated database update: `UPDATE counter SET value = value + 10000`.
+  3. **Queue-Based Serializing**: Route all writes to the hot row through a single-threaded queue worker, converting concurrent parallel lock struggles into an orderly, non-blocking sequential processing stream.
+
+
+---
+
 ## 5. Popular Interview Questions & High-Impact Answers
 
 ### Q1: What is the difference between Non-Repeatable Read and Phantom Read?

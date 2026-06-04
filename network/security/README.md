@@ -117,3 +117,17 @@ When a client certificate is compromised (e.g., a laptop is stolen), it must be 
   - *Trade-off*: Adds network latency to every handshake. If the OCSP responder goes down, the server must choose to either "soft-fail" (allow insecure access) or "hard-fail" (block valid clients).
 - **OCSP Stapling (Optimization - for server certs)**:
   - The server queries the OCSP responder itself every hour, gets a signed and timestamped proof of validity, and "staples" this proof directly inside the initial handshake to the client. This offloads OCSP network round-trips from the client.
+
+### Q4: [Asymmetric Key Payload Trade-off] Why is asymmetric cryptography not used to encrypt the actual application data payload in network protocols like HTTP/2/3, and how is it used during the handshake to solve the key exchange problem?
+**Answer**:
+* **Payload Encryption**: Asymmetric encryption (like RSA-4096 or ECC) relies on extremely complex modular exponentiation or elliptic curve point multiplication. This is computationally expensive and slow—about 100 to 1,000 times slower than symmetric block ciphers like AES-GCM or ChaCha20-Poly1305, which run in hardware-accelerated CPU instructions (AES-NI).
+* **Handshake Phase**: Asymmetric encryption is used *only* during the initial handshake to safely authenticate the identities of the nodes and securely negotiate a shared secret (session key) over an untrusted public channel.
+* **Hybrid Cryptography**: Once the handshake completes and both parties agree on a symmetric session key, the asymmetric keys are put to sleep, and the entire high-throughput application data payload is encrypted using the fast symmetric key.
+
+### Q5: [Asymmetric Key Security Struggle] How does Ephemeral Diffie-Hellman (ECDHE) with digital signatures provide Forward Secrecy, and what happens if an attacker steals the server's private asymmetric key years after recording encrypted network traffic?
+**Answer**:
+* **Traditional Key Exchange (Non-Forward Secrecy)**: In older RSA handshakes, the client encrypts a symmetric key using the server's public key and sends it to the server. If an attacker records all encrypted traffic over several years, and then later steals the server's private key, they can decrypt the recorded handshake, retrieve the symmetric key, and decrypt *all historical traffic*.
+* **Forward Secrecy (ECDHE)**: Under Ephemeral Diffie-Hellman, the server and client generate a *random, throwaway (ephemeral)* key pair for *each individual session*. They perform a Diffie-Hellman key exchange, compute a shared secret, and immediately destroy the ephemeral keys after the session.
+* **The Asymmetric Role**: The server's persistent asymmetric private key is used *only* to digitally sign the ephemeral DH parameters, proving authenticity and preventing Man-In-The-Middle (MITM) attacks.
+* **The Compromise Outcome**: If the server's private key is stolen years later, the attacker *cannot* decrypt historical traffic because the shared symmetric keys were never sent across the wire, nor were they derived from the persistent private key. The attacker can only use the stolen key to impersonate the server in *future* handshakes.
+

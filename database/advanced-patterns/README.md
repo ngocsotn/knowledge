@@ -116,3 +116,98 @@ The Transactional Outbox pattern guarantees **at-least-once** delivery. Network 
   1. **Upcasting (Best Practice)**: Build an intermediate translation layer (Upcasters) in the application. When historical events are loaded from the Event Store, they are passed through a chain of Upcasters that transform old schemas (e.g., v1) into the current schema (e.g., v3) in-memory before the event reaches the domain aggregate.
   2. **Lazy Migration (Copy and Replace)**: A background migration script reads old events, maps them to the new schema format, and writes them to a new event stream, leaving a pointer linking the old stream to the new one.
   3. **Metadata Versioning**: Include an explicit version tag in the event envelope metadata. Resolvers use factory patterns to parse JSON payloads into different class versions based on the metadata tag.
+
+---
+
+## 6. Multi-Tenant Enterprise Database Patterns
+
+When building Multi-Tenant SaaS systems, you must choose how to isolate tenant data at the storage tier:
+
+| Pattern | Isolation Level | Cost Efficiency | Operational Complexity | Core Risk |
+| :--- | :---: | :---: | :---: | :--- |
+| **Database per Tenant** (Physical) | **Highest** | **Lowest** (Idle DBs cost $) | Medium-High (Many DBs to update) | Slow provisioning; resource waste. |
+| **Schema per Tenant** (Logical) | **Medium** | **Medium** | **Highest** (Schema migrations lag) | Database connection pool exhaustion. |
+| **Shared Schema** (Row-level) | Low-Medium | **Highest** | **Lowest** (Single schema update) | Developer error leaking tenant data. |
+
+### A. Deep Dive: Row-Level Isolation (Shared Database & Shared Schema)
+The most common and cost-effective approach. Every table contains a `tenant_id` column.
+* **The Vulnerability**: A developer forgets to include `WHERE tenant_id = ?` in a complex query, resulting in a cross-tenant data leak.
+* **The Solution (PostgreSQL Row-Level Security - RLS)**:
+  Enforce isolation directly at the database engine level so queries are automatically scoped:
+  ```sql
+  -- 1. Enable RLS on the table
+  ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+  
+  -- 2. Create an isolation policy
+  CREATE POLICY tenant_isolation_policy ON transactions
+    FOR ALL
+    USING (tenant_id = current_setting('app.current_tenant_id'));
+  ```
+  * In the application connection pool, every transaction must first execute:
+    `SET LOCAL app.current_tenant_id = 'tenant_abc';`
+  * The engine then transparently injects the `tenant_id` filter into *all* queries, completely eliminating the developer leakage risk.
+
+---
+
+## 7. Distributed Locking
+
+In a microservice environment, local language locks (like Go's `sync.Mutex` or Java's `synchronized`) are useless because multiple application instances run on separate physical servers with disjoint virtual memory.
+
+### A. Redis-Based Distributed Locks
+
+To prevent concurrent race conditions across clusters, use a shared coordinator like Redis:
+
+#### 1. Single-Instance Redis Lock
+* **Acquiring Lock**: Execute an atomic `SET` with `NX` (Not Exists) and `PX` (Expiration Time):
+  ```redis
+  SET order_lock_123 "unique_request_uuid" NX PX 30000
+  ```
+  * `NX` guarantees mutual exclusion.
+  * `PX 30000` guarantees the lock auto-expires in 30 seconds if the owner node crashes (preventing permanent deadlocks).
+* **Releasing Lock**: You must *only* release the lock if the value matches your `unique_request_uuid` (preventing Node A from deleting a lock that has expired and been acquired by Node B). This requires a **Lua Script** executed atomically in Redis:
+  ```lua
+  if redis.call("get", KEYS[1]) == ARGV[1] then
+      return redis.call("del", KEYS[1])
+  else
+      return 0
+  end
+  ```
+
+#### 2. Redlock Algorithm (Multi-Instance Distributed Consensus)
+If the single Redis master node crashes, a secondary replica promoted via failover might not have received the lock key yet (as replication is async), allowing two nodes to acquire the same lock.
+* **The Redlock Steps**:
+  1. The client gets the current timestamp.
+  2. It attempts to acquire the lock sequentially across $N$ independent Redis master nodes (typically 5) using the same key and random value. It uses a very small timeout for each node (e.g., 5-10ms) to avoid blocking if a node is down.
+  3. The client computes the elapsed time. The lock is successfully acquired **only if**:
+     * The client successfully locked a strict **majority of nodes** ($N/2 + 1$, i.e., 3 out of 5).
+     * The total elapsed time to acquire the locks is **less than the lock validity time**.
+  4. If acquired, the lock's actual active time is the initial validity time minus the elapsed acquisition time.
+  5. If the client fails to acquire the majority, it must immediately send a broadcast unlock script to **all nodes** to clean up partial locks.
+
+---
+
+## 8. Hard Interview Questions & Deep Answers (Extended)
+
+### Q4: Explain the famous critique of Redis Redlock by Martin Kleppmann. Why does Redlock fail under severe asynchronous network and system conditions?
+**Answer**:
+Martin Kleppmann proved that Redlock is unsafe for distributed correctness because it relies on the physical system clock, which can drift, jump, or freeze in real-world systems. He outlined two main failure paths:
+1. **GC Pause (Stop-The-World)**:
+   * Client A acquires locks on Redis nodes 1, 2, and 3 (majority).
+   * Client A immediately enters a long garbage collection (JVM/Go STW) pause.
+   * While Client A is paused, the locks expire on the Redis nodes.
+   * Client B acquires the locks on nodes 1, 2, 3 (since they expired).
+   * Client A wakes up from its GC pause, assumes its lock is still valid, and writes to the database—violating mutual exclusion!
+2. **Clock Drift**:
+   * Redis Node 3's system clock drifts forward rapidly.
+   * Client A acquires locks on Nodes 1 and 2. Node 3's clock jumps forward, immediately expiring the lock on Node 3.
+   * Client B can now lock Nodes 3, 4, and 5, resulting in both Client A and Client B holding the lock simultaneously.
+* **Conclusion**: For **performance locks** where occasional duplicates are acceptable, Redlock is fine. For **correctness/safety locks** where double-locking means data corruption, you must use a consensus-backed coordinator like **ZooKeeper** or **etcd** which uses sequentially incremented numbers called **Fencing Tokens** (or raft term indexes) to reject stale writes at the storage layer.
+
+### Q5: In a multi-tenant SaaS application, how do you handle asymmetric JWT verification when different tenants insist on using their own identity providers (IdPs like Okta, Azure AD, Ping Identity)?
+**Answer**:
+To verify asymmetric JWTs signed by tenant-specific IdPs without compiling static public keys into your application code:
+1. **Dynamic Issuer Parsing**: When a request arrives, parse the unverified JWT header to extract the `"iss"` (Issuer) claim or inspect the hostname (e.g., `tenant-a.saas.com`).
+2. **Key Provider Routing (JWKS Lookup)**: Maintain a tenant routing metadata table mapping `tenant_id` to their IdP's JWKS (JSON Web Key Set) URL (e.g., `https://tenant-a.okta.com/oauth2/v1/keys`).
+3. **Dynamic JWKS Client**: Use a JWKS caching client with a circuit breaker. It fetches the JWKS from the routed tenant-specific URL, caches the public keys in memory indexed by the token's key ID (`kid`), and uses the matching public key to verify the token signature.
+4. **Tenant Metadata Caching**: Cache the metadata lookup in Redis to avoid hitting PostgreSQL on every request gateway. This keeps verification extremely fast and fully decoupled across hundreds of corporate enterprise tenants.
+
