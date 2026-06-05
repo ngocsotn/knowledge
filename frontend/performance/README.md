@@ -37,17 +37,19 @@ Instruct the browser on resource priorities using link tags:
 
 ## 3. Modern Browser Media Compression: WebP, AVIF, and WebM
 
-Unoptimized images and videos typically represent 60% to 80% of an average website's total page weight. Delivering heavy legacy formats (like raw PNG, JPEG, GIF, and standard MP4) directly degrades the **Largest Contentful Paint (LCP)** core web vital, wasting user data and increasing load times.
+Unoptimized images, videos, and audio typically represent 60% to 80% of an average website's total page weight. Delivering heavy legacy formats (like raw PNG, JPEG, GIF, standard MP4, and MP3) directly degrades the **Largest Contentful Paint (LCP)** core web vital, wasting user data and increasing load times.
 
 ---
 
 ### A. Comparative Media Matrix
 
-| Format / Codec | Media Type | Compression Style | Size Reduction (vs. Legacy) | Alpha Transparency | Animation Support | Browser Compatibility | Best Production Use Case |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **WebP** (Google) | Image | Lossy & Lossless | **~30% smaller** than JPEG/PNG | **Yes** (replaces heavy PNG) | **Yes** (replaces heavy GIF) | **Universal** (>97% global support) | All standard web images, product galleries |
-| **AVIF** (AOMedia) | Image | Lossy & Lossless | **~50% smaller** than JPEG / **~20% smaller** than WebP | **Yes** (replaces heavy PNG) | **Yes** (high quality, small size) | **High** (>93%, modern browsers) | Hero graphics, high-fidelity photography |
-| **WebM (VP9/AV1)** | Video | Lossy | **~50% smaller** than H.264 MP4 | **Yes** (transparent video overlays) | Yes | **High** (all modern browsers) | Inline video backgrounds, loop micro-animations |
+| Format / Codec | Media Type | Compression Style | Size Reduction (vs. Legacy) | Alpha Channel | Key Performance Features | Browser Support | Best Production Use Case |
+| :--- | :---: | :--- | :--- | :---: | :--- | :---: | :--- |
+| **WebP** (Google) | Image | Lossy & Lossless | **~30% smaller** than JPEG/PNG | **Yes** | Replaces heavy PNG/GIF | **Universal** (>97%) | General web assets, product photos |
+| **AVIF** (AOMedia) | Image | Lossy & Lossless | **~50% smaller** than JPEG / **~20% vs WebP** | **Yes** | 10/12-bit color, AV1-based | **High** (>93%) | High-fidelity photography, hero graphics |
+| **JPEG XL (JXL)** | Image | Lossy & Lossless | **~60% smaller** than JPEG | **Yes** | **Lossless JPEG recompression**, progressive decoding | **Experimental** (Safari native, Chrome flags) | High-res photo archiving, rapid progressive loads |
+| **AV1 Codec** | Video | Lossy | **~50% smaller vs H.264** / **~30% vs HEVC** | **Yes** | Royalty-free, next-gen high density | **High** (>92%) | High-definition streaming, micro-animations |
+| **Opus Codec** | Audio | Lossy | **Extreme density** (6kbps - 510kbps) | N/A | Dynamic adaptive bit-rate, 5ms latency | **Universal** (>98%) | WebRTC voice calls, high-res audio streaming |
 
 ---
 
@@ -63,30 +65,71 @@ Based on the next-gen **AV1** open-source video codec, AVIF is the most advanced
 - **Visual Fidelity**: Supports **10-bit and 12-bit color depth**, High Dynamic Range (HDR), and wider color gamuts. It eliminates "color banding" artifacts in gradients that frequently ruin highly compressed JPEGs.
 - **The Compression Benefit**: At high compression rates, AVIF maintains sharp details and edges where WebP and JPEG begin to experience "smearing" or blocky artifacts.
 
----
-
-### C. Next-Gen Video Formats
-
-#### WebM (VP9 / AV1)
-WebM is a highly compressed media container format developed specifically for HTML5 browser video.
-- **The Codec Leap**: Traditional `.mp4` files use the H.264 (MPEG-4) codec, which is highly inefficient for high-definition web playback. WebM using **VP9** or **AV1** compression engines reduces video size by **50%** compared to MP4, ensuring instant start times and zero buffering.
-- **Transparent Web Video**: Unlike MP4 (which does not support alpha channel transparency natively), WebM supports **video transparency**, enabling developers to overlay complex, pre-rendered motion graphics directly on top of dynamic HTML elements.
+#### 3. JPEG XL (The Ultimate Image Standard)
+JPEG XL (JXL) is designed to replace both baseline JPEG and legacy raw formats, optimized for both web delivery and professional photography.
+- **Lossless JPEG Transcoding**: JXL can seamlessly transcode existing legacy JPEGs into JPEG XL files, **reducing file size by 20% with zero quality loss** (fully reversible back to the original byte-identical JPEG).
+- **Responsive Progressive Decoding**: Built-in, high-efficiency progressive decoding allows browsers to render a low-resolution preview using only **15% of the file data**, progressively refining the image as more bytes arrive. This completely eliminates visual layout shifts.
+- **Speed & Hardware**: Supports up to 32-bit float channels, up to 9999 channels (for multispectral data), and is mathematically designed for rapid, highly parallelized software encoding/decoding without needing dedicated hardware acceleration.
 
 ---
 
-### D. Implementation Best Practices (Progressive Enhancement)
+### C. Advanced Video Codecs Comparison
+
+To deliver high-definition inline videos and micro-animations, selecting the correct video codec is critical:
+
+1. **H.264 (AVC - Advanced Video Coding)**:
+   - *Status*: Legacy industry workhorse.
+   - *Pros*: Universal compatibility on 99.9% of devices globally. Supports hardware decoding on virtually all CPUs and GPUs.
+   - *Cons*: Highly inefficient compression compared to modern codecs. Large file sizes at 1080p and 4K.
+2. **H.265 (HEVC - High Efficiency Video Coding)**:
+   - *Status*: Successor to H.264.
+   - *Pros*: Excellent compression density (**50% smaller than H.264**). Standard in native mobile video capture (iOS/Android).
+   - *Cons*: Burdened by complex, expensive royalty licensing fees. This delayed browser adoption historically, although it is now supported in modern browsers with matching hardware decoders.
+3. **VP9 (Google open standard)**:
+   - *Status*: Free, royalty-free standard.
+   - *Pros*: Competes directly with HEVC in compression density, universally supported across all browsers without licensing bottlenecks.
+4. **AV1 (AOMedia Open Standard)**:
+   - *Status*: Modern royalty-free champion.
+   - *Pros*: **30% more efficient than VP9/HEVC** and **50% more efficient than H.264**. Backed by major technology companies (Apple, Google, Netflix, Microsoft).
+   - *Cons*: CPU-intensive encoding at build time. Requires modern hardware decoding support (integrated in Apple M3+, Intel 11th Gen+, AMD RDNA2+, Nvidia RTX 30+).
+
+---
+
+### D. Advanced Audio Codecs Optimization
+
+1. **AAC (Advanced Audio Coding)**:
+   - *Status*: The classic successor to MP3.
+   - *Pros*: Universal compatibility, excellent performance at standard bit rates (128kbps - 256kbps).
+   - *Cons*: Lacks dynamic adaptability and has high latency (not suitable for real-time applications).
+2. **FLAC (Free Lossless Audio Codec)**:
+   - *Status*: Professional lossless standard.
+   - *Pros*: Compresses audio with **zero quality loss**.
+   - *Cons*: File sizes are too large (typically 5x to 10x larger than lossy formats) for general web delivery, reserved strictly for audiophile platforms.
+3. **Opus (The Web Audio Champion)**:
+   - *Status*: The absolute king of interactive and streaming web audio. Developed by Xiph.Org and Skype.
+   - *Pros*:
+     - **Hybrid Architecture**: Merges **SILK** (optimized for human speech) and **CELT** (optimized for ultra-high-fidelity music).
+     - **Dynamic Adaptability**: Can adjust its bit rate seamlessly on-the-fly from **6 kbps to 510 kbps** based on network conditions without dropping audio frames.
+     - **Ultra-Low Latency**: Operates at a microscopic latency frame size (**5ms to 20ms**), making it the mandatory standard for WebRTC, VOIP, multiplayer gaming, and real-time audio streams.
+
+---
+
+### E. Implementation Best Practices (Progressive Enhancement)
 
 To deliver the smallest possible next-gen formats while maintaining safety fallbacks for legacy browsers, utilize the HTML5 **`<picture>`** element:
 
 ```html
 <picture>
-  <!-- 1. Serve AVIF to cutting-edge browsers (smallest size) -->
+  <!-- 1. Serve JXL to advanced browsers (if supported) -->
+  <source srcset="hero-image.jxl" type="image/jxl">
+  
+  <!-- 2. Serve AVIF to cutting-edge browsers (smallest size) -->
   <source srcset="hero-image.avif" type="image/avif">
   
-  <!-- 2. Serve WebP to other modern browsers -->
+  <!-- 3. Serve WebP to other modern browsers -->
   <source srcset="hero-image.webp" type="image/webp">
   
-  <!-- 3. Fallback to standard optimized JPEG/PNG for old legacy clients -->
+  <!-- 4. Fallback to standard optimized JPEG/PNG for old legacy clients -->
   <img 
     src="hero-image.jpg" 
     alt="Optimized Hero Graphic" 
