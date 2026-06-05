@@ -390,3 +390,92 @@ func main() {
 }
 ```
 
+---
+
+## 5. Advanced Graph Algorithms: Optimization, Connectivity, and Hamiltonian Paths
+
+For complex enterprise networks, routing architectures, and data-flow trees, standard traversals are insufficient. We utilize advanced graph optimizations.
+
+### A. Minimum Spanning Trees (MST)
+An MST of an undirected, connected, weighted graph is a subset of the edges that connects all vertices together without any cycles, and with the minimum possible total edge weight.
+
+```
+Graph:                          Minimum Spanning Tree (Total Weight: 7)
+    (A) ─── 1 ─── (B)                  (A) ─── 1 ─── (B)
+     │ \           │                                  │
+     4  3          5                                  3
+     │     \       │                                  │
+    (C) ─── 2 ─── (D)                  (C) ─── 2 ─── (D)
+```
+
+1. **Kruskal's Algorithm (Edge-Greedy)**:
+   - **Mechanism**: Sorts all edges in non-decreasing order of weight. Greedily adds the cheapest edge to the MST, unless adding it creates a cycle.
+   - **Union-Find (DSU)**: Uses a **Disjoint Set Union** data structure with **Path Compression** and **Union by Rank** to detect cycles in near-$O(1)$ time.
+   - **Complexity**: $O(E \log E)$ (dominated by edge sorting).
+2. **Prim's Algorithm (Vertex-Greedy)**:
+   - **Mechanism**: Grows the MST outward from a starting vertex. At each step, it uses a Min-Heap to add the cheapest edge connecting any vertex in the active MST to a vertex outside the MST.
+   - **Complexity**: $O(E \log V)$ with binary heap.
+
+---
+
+### B. Advanced Shortest Paths
+
+1. **Bellman-Ford Algorithm (Negative Edge Weights)**:
+   - **Problem**: Dijkstra fails if a graph contains **negative edge weights** because its greedy selection assumes once a node is visited, its shortest path is permanently resolved.
+   - **Mechanism**: Relaxes all edges $V-1$ times (where $V$ is the number of vertices). If an edge can be relaxed a $V$-th time, the graph contains a **negative weight cycle** (re-running the cycle yields infinite negative distance).
+   - **Complexity**: $O(V \times E)$.
+
+2. **Floyd-Warshall Algorithm (All-Pairs Shortest Path)**:
+   - **Goal**: Computes the shortest paths between **every pair of vertices** in a weighted graph.
+   - **Mechanism**: Dynamic Programming. It iteratively evaluates whether a path between $i$ and $j$ can be optimized by routing through an intermediate vertex $k$:
+     $$\text{dist}[i][j] = \min(\text{dist}[i][j], \text{dist}[i][k] + \text{dist}[k][j])$$
+   - **Complexity**: $O(V^3)$ time, $O(V^2)$ space.
+
+---
+
+### C. Strongly Connected Components (SCC)
+A Strongly Connected Component of a directed graph is a maximal subtree of vertices where **every vertex is reachable from every other vertex** in that subtree.
+
+1. **Kosaraju's Algorithm (Two-Pass DFS)**:
+   - **Step 1**: Run DFS on the original graph. As vertices finish processing, push them onto a stack.
+   - **Step 2**: **Transpose** the graph (reverse the direction of all edges).
+   - **Step 3**: Pop vertices from the stack. If unvisited, run DFS on the transposed graph; the set of visited vertices form an individual SCC.
+   - **Complexity**: $O(V + E)$ (highly simple, but requires transposing the graph).
+
+2. **Tarjan's Algorithm (One-Pass DFS)**:
+   - **Mechanism**: Tracks two values for each node during a single DFS traversal:
+     - `discovery_time[u]`: Timestamp when node $u$ is first visited.
+     - `low_link[u]`: The lowest discovery time reachable from $u$, including back-edges inside the active DFS stack.
+   - As nodes are traversed, they are pushed onto an active recursion stack. When a node's `discovery_time == low_link`, the algorithm pops all nodes from the stack until the current node is reached, yielding one complete SCC.
+   - **Complexity**: $O(V + E)$ (more efficient, single pass).
+
+---
+
+### D. Hamiltonian Path & Hamiltonian Cycle
+- **Hamiltonian Path**: A path that visits **every vertex exactly once**.
+- **Hamiltonian Cycle**: A Hamiltonian Path that is a cycle (returns to the starting vertex).
+- **Complexity**: **NP-Complete**. No known polynomial-time solution exists. Solved using backtracking in $O(V!)$ or dynamic programming with bitmasks in $O(2^V \cdot V^2)$ (Held-Karp algorithm).
+- **Comparison to Eulerian Path**:
+  - **Eulerian Path**: Visits **every edge exactly once**. Solvable in linear time $O(V+E)$ by checking vertex degrees (at most two vertices can have an odd degree).
+
+---
+
+## 6. Popular Interview Questions & High-Impact Answers (Extended)
+
+### Q4: Explain the difference between Kruskal's and Prim's algorithms. When is each preferred?
+* **Answer**: Both are greedy MST algorithms but differ in traversal:
+  - **Kruskal's** is **edge-centric**: it sorts all edges globally and connects disconnected forest components, utilizing Union-Find to prevent cycles. It is preferred for **sparse graphs** ($E \approx V$) because sorting fewer edges is fast.
+  - **Prim's** is **vertex-centric**: it grows a single, continuous tree from a source vertex, pulling the nearest adjacent node via a Min-Heap. It is preferred for **dense graphs** ($E \approx V^2$) because heap updates are more efficient than sorting a massive edge list.
+
+### Q5: What is a "Negative Weight Cycle" and how does the Bellman-Ford algorithm detect it?
+* **Answer**: A negative weight cycle is a closed loop in a weighted graph whose total edge weight sum is less than zero. If you repeatedly traverse this loop, path distances can decrease infinitely towards negative infinity, making "shortest path" calculations mathematically impossible. **Bellman-Ford detects this** because the longest possible path without cycles in a graph of $V$ vertices has $V-1$ edges. Bellman-Ford relaxes all edges $V-1$ times. If we run a $V$-th relaxation pass and any distance value *still* decreases, those relaxing edges must belong to a negative weight cycle.
+
+### Q6: How does Tarjan's algorithm find Strongly Connected Components (SCCs) in a single pass?
+* **Answer**: Tarjan's algorithm uses DFS to trace the graph, maintaining a stack of active nodes. It tracks the `discovery_time` and the `low_link` (the oldest ancestor reachable) for each vertex. As DFS backtracks, it updates the `low_link` of parent nodes. If a vertex's `discovery_time` is equal to its `low_link`, it indicates that this vertex is the "head" of an SCC, and no node in this component can reach any ancestor older than this head. The algorithm then pops all nodes from its active stack down to this head, outputting them as a distinct Strongly Connected Component.
+
+### Q7: Compare the Hamiltonian Path problem with the Eulerian Path problem in terms of definition and computational complexity.
+* **Answer**: 
+  - A **Hamiltonian Path** must visit **every vertex exactly once**. It is an **NP-Complete** problem with no polynomial-time solution; solving it requires $O(V!)$ backtracking or $O(2^V \cdot V^2)$ bitmask dynamic programming.
+  - An **Eulerian Path** must visit **every edge exactly once**. It is in class **P**, solvable in linear $O(V+E)$ time. We simply check that the graph is connected and has either exactly zero or exactly two vertices of odd degree, then trace the path using Hierholzer's algorithm.
+
+

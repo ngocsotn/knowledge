@@ -230,7 +230,113 @@ func main() {
 		{0, 1, 0},
 		{0, 0, 0},
 	}
+
 	fmt.Println("Unique paths avoiding obstacle:", uniquePathsWithObstacles(grid)) // Output: 2
 }
 ```
+
+---
+
+## 6. Staff-Level Deep Dive: Bitmask Dynamic Programming (Held-Karp TSP)
+
+When solving NP-Hard problems that involve finding an optimal subset or sequence of choices (such as the **Hamiltonian Cycle** or **Travelling Salesperson Problem**), standard recursion takes $O(N!)$ brute-force time, which is completely unscalable for $N > 12$. 
+
+By using **Bitmask Dynamic Programming**, we can optimize this to **$O(2^N \cdot N^2)$** time by representing the visited state of nodes as a binary integer (bitmask).
+
+### A. The Core Concept: What is a Bitmask?
+Instead of passing a slow hash set or array to track visited cities (e.g., `visited = [true, false, true]`), we use a single integer's binary representation.
+- A 32-bit integer can represent up to 32 boolean flags.
+- **Set the $i$-th flag**: `mask | (1 << i)`
+- **Check the $i$-th flag**: `(mask & (1 << i)) != 0`
+- **Clear the $i$-th flag**: `mask & ^(1 << i)`
+
+### B. TSP State-Transition Formula (Held-Karp)
+Let `dp[mask][u]` represent the minimum cost of visiting the subset of cities represented by `mask`, ending at city `u`.
+- To calculate `dp[mask][u]`, we find the best previous city `v` we could have traveled from:
+
+$$\text{dp}[\text{mask}][u] = \min_{v} (\text{dp}[\text{mask} \setminus \{u\}][v] + \text{dist}[v][u])$$
+
+where `v` is a city in `mask` other than `u`.
+
+### C. Go Implementation of TSP (Bitmask DP)
+```go
+package main
+
+import (
+	"fmt"
+	"math"
+)
+
+// TSP calculates the minimum cost to visit all cities and return to start
+func TSP(dist [][]int) int {
+	n := len(dist)
+	numStates := 1 << n // 2^N states
+	
+	// Initialize 2D DP table: dp[mask][u]
+	dp := make([][]int, numStates)
+	for i := range dp {
+		dp[i] = make([]int, n)
+		for j := range dp[i] {
+			dp[i][j] = -1 // -1 means uncalculated state
+		}
+	}
+
+	// Helper function for top-down memoization
+	var solve func(mask, u int) int
+	solve = func(mask, u int) int {
+		// Base Case: If all cities are visited, return cost to go back to starting city (0)
+		if mask == (1<<n)-1 {
+			return dist[u][0]
+		}
+
+		if dp[mask][u] != -1 {
+			return dp[mask][u]
+		}
+
+		minCost := math.MaxInt32
+
+		// Explore next unvisited cities
+		for v := 0; v < n; v++ {
+			// If city v is not visited yet (v-th bit is 0)
+			if (mask & (1 << v)) == 0 {
+				newCost := dist[u][v] + solve(mask|(1<<v), v)
+				if newCost < minCost {
+					minCost = newCost
+				}
+			}
+		}
+
+		dp[mask][u] = minCost
+		return minCost
+	}
+
+	// Start at city 0, with only city 0 visited (mask = 1)
+	return solve(1, 0)
+}
+
+func main() {
+	// Cost matrix between 4 cities (0-indexed)
+	dist := [][]int{
+		{0, 10, 15, 20},
+		{10, 0, 35, 25},
+		{15, 35, 0, 30},
+		{20, 25, 30, 0},
+	}
+
+	fmt.Println("Shortest Travelling Salesperson Route Cost:", TSP(dist)) // Output: 80 (0->1->3->2->0: 10 + 25 + 30 + 15 = 80)
+}
+```
+
+### D. Complexity Comparison: Brute Force vs. Bitmask DP
+- **For $N = 20$**:
+  - **Brute Force $O(N!)$**: $20! \approx 2.4 \times 10^{18}$ operations (takes **77 years** on a standard PC).
+  - **Bitmask DP $O(2^N \cdot N^2)$**: $2^{20} \times 20^2 \approx 4.1 \times 10^8$ operations (takes **0.2 seconds**).
+- **The Trade-off**: Bitmask DP achieves speed by trading space. The memory overhead is $O(2^N \cdot N)$, which limits this algorithm to $N \le 23$ before exhausting standard RAM.
+
+---
+
+## 7. Popular Interview Questions & High-Impact Answers
+
+### Q4: What is "Bitmask DP" and when should it be utilized?
+* **Answer**: **Bitmask DP** is an optimization technique that uses binary integers (bitmasks) to represent subsets of chosen elements inside dynamic programming state transitions. It should be utilized when solving NP-Hard permutation or scheduling problems (like the Travelling Salesperson Problem, Hamiltonian Paths, or subset matching) on relatively small input sizes ($N \le 22$). By mapping subset choices to bit-flags, we can compress set storage, bypass array comparisons, and reduce computational complexity from factorial $O(N!)$ to exponential $O(2^N \cdot N^2)$.
 
