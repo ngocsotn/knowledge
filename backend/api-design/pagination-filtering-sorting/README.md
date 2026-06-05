@@ -54,7 +54,130 @@ By filtering on the index keys (`created_at`, `id`), the database can perform an
 
 ---
 
-## 2. Dynamic Filtering & Sorting Safely
+## 2. CTE-Based Pagination & Deferred Joins
+
+When scaling relational databases, standard offset pagination or complex filtering combined with massive table joins can lead to extreme performance degradation. Utilizing **Common Table Expressions (CTEs)** and **Deferred Joins** enables ultra-high-performance pagination.
+
+### A. Deferred Joins / Late Row Lookups
+A deferred join is an optimization where the database filters and paginates only the primary keys/IDs first, then joins the result back to the same table (or related tables) to fetch the wider columns and heavy payloads.
+
+#### The Problem:
+If a query contains joins or selects large text/binary columns (e.g., `body`, `metadata_json`), standard offset pagination loads all columns of all scanned rows into memory before discarding those skipped by the offset.
+```sql
+-- SLOW: Loads heavy text columns for 50,010 rows, joins with users, then throws away 50,000 rows
+SELECT p.id, p.title, p.body, u.username 
+FROM posts p
+JOIN users u ON p.user_id = u.id
+ORDER BY p.created_at DESC 
+LIMIT 10 OFFSET 50000;
+```
+
+#### The Solution (Deferred Join via CTE):
+We paginate only on the lightweight indexed keys in a CTE to get the 10 target IDs, then join back to load the heavy data columns.
+```sql
+WITH paginated_keys AS (
+    SELECT id 
+    FROM posts 
+    ORDER BY created_at DESC 
+    LIMIT 10 OFFSET 50000
+)
+SELECT p.id, p.title, p.body, u.username 
+FROM posts p
+JOIN paginated_keys pk ON p.id = pk.id
+JOIN users u ON p.user_id = u.id
+ORDER BY p.created_at DESC;
+```
+- **Why it is fast**: The CTE `paginated_keys` only scans the lightweight B-Tree index on `(created_at, id)` to fetch 10 IDs. The database only performs the heavy `JOIN` on the final 10 rows instead of 50,010 rows, avoiding loading megabytes of unneeded text and joining user records that are discarded.
+
+---
+
+### B. Single-Query Total Count + Paginated Rows (Combined CTE)
+Typically, APIs returning paginated data require a total count for UI pagination elements. This normally forces two database round-trips:
+1. `SELECT COUNT(*) FROM posts WHERE status = 'published';`
+2. `SELECT * FROM posts WHERE status = 'published' LIMIT 10 OFFSET 50;`
+
+Under high load, executing two separate scans on large tables doubles database overhead. A CTE can combine both tasks into a **single SQL query execution**.
+
+#### The Combined CTE Query:
+```sql
+WITH filtered_posts AS (
+    SELECT id, title, created_at
+    FROM posts
+    WHERE status = 'published'
+),
+total_count AS (
+    SELECT COUNT(*) AS total FROM filtered_posts
+),
+paginated_rows AS (
+    SELECT id, title, created_at
+    FROM filtered_posts
+    ORDER BY created_at DESC
+    LIMIT 10 OFFSET 50
+)
+SELECT 
+    p.id, 
+    p.title, 
+    p.created_at, 
+    c.total
+FROM paginated_rows p
+CROSS JOIN total_count c;
+```
+
+#### How to Parse in Go:
+```go
+type PaginatedPost struct {
+    ID        int64     `db:"id"`
+    Title     string    `db:"title"`
+    CreatedAt time.Time `db:"created_at"`
+    TotalCount int64    `db:"total"` // Captured from the CROSS JOIN
+}
+
+func FetchPaginatedPosts(db *sql.DB, limit, offset int) ([]PaginatedPost, int64, error) {
+    query := `
+        WITH filtered_posts AS (
+            SELECT id, title, created_at FROM posts WHERE status = 'published'
+        ),
+        total_count AS (
+            SELECT COUNT(*) AS total FROM filtered_posts
+        ),
+        paginated_rows AS (
+            SELECT id, title, created_at FROM filtered_posts
+            ORDER BY created_at DESC LIMIT $1 OFFSET $2
+        )
+        SELECT p.id, p.title, p.created_at, c.total
+        FROM paginated_rows p
+        CROSS JOIN total_count c;`
+
+    rows, err := db.Query(query, limit, offset)
+    if err != nil {
+        return nil, 0, err
+    }
+    defer rows.Close()
+
+    var posts []PaginatedPost
+    var total int64
+
+    for rows.Next() {
+        var p PaginatedPost
+        if err := rows.Scan(&p.ID, &p.Title, &p.CreatedAt, &p.TotalCount); err != nil {
+            return nil, 0, err
+        }
+        posts = append(posts, p)
+        total = p.TotalCount // Same for all rows
+    }
+
+    return posts, total, nil
+}
+```
+
+#### Performance Trade-off (The CTE Optimization Fence):
+- **PostgreSQL < 12**: CTEs were strict **optimization fences**. The engine evaluated the entire CTE in memory before applying outer filters, causing full table scans even if the outer query had a LIMIT.
+- **PostgreSQL 12+**: The optimizer dynamically inlines CTEs (treated as subqueries) unless they are explicitly marked as `MATERIALIZED`.
+- **Best Practice**: If the count portion is extremely heavy, caching the total count in Redis or utilizing an approximate count (`SELECT reltuples FROM pg_class`) is preferred over executing a full count in every query.
+
+---
+
+## 3. Dynamic Filtering & Sorting Safely
 
 Implementing custom filtering and sorting requires dynamic SQL query construction. This introduces significant security and performance risks if done incorrectly.
 
@@ -83,7 +206,7 @@ Implementing custom filtering and sorting requires dynamic SQL query constructio
 
 ---
 
-## 3. Advanced Indexing Rules for Complex Filters
+## 4. Advanced Indexing Rules for Complex Filters
 
 When constructing indexes to support dynamic filter combinations, understanding B-Tree index properties is critical.
 
@@ -103,7 +226,7 @@ When designing a composite index to support filters with both equality and range
 
 ---
 
-## 4. Scalable Full-Text Search (FTS)
+## 5. Scalable Full-Text Search (FTS)
 
 Standard pattern matching using `LIKE '%pattern%'` is a common performance bottleneck:
 - `LIKE '%pattern%'` (leading wildcard) **cannot use standard B-Tree indexes**. It forces the database to execute a full table scan, parsing and pattern-matching every single string on every row.
@@ -137,7 +260,7 @@ For massive tables where offloading to Elasticsearch is too heavy, native FTS us
 
 ---
 
-## 5. Hard Interview Questions & Deep Answers
+## 6. Hard Interview Questions & Deep Answers
 
 ### Q1: How do you design cursor-based pagination when sorting by a non-unique column (e.g., product price)?
 **Answer**:
