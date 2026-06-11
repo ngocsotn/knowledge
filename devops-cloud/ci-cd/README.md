@@ -59,3 +59,47 @@ To minimize risk and prevent downtime during production rollouts, teams utilize 
 
 ### Q3: What is "Configuration Drift" and how do you prevent it in infrastructure deployments?
 * **Answer:** **Configuration Drift** occurs when manual hotfixes or configurations are made directly on production servers (e.g., modifying firewall rules or updating files via SSH) without updating the primary CI/CD pipeline or configuration scripts. This leads to discrepancies between the staging and production environments, causing future automated deployments to fail mysteriously. It is prevented by using **IaC (Infrastructure as Code)** tools like Terraform or Ansible and enforcing strict "no-SSH" write policies on production.
+
+### Q4: What is the difference between Scripted and Declarative pipelines in Jenkins?
+* **Answer:**
+  * **Scripted Pipeline:** Imperative model, uses Groovy script. Highly flexible, supports complex programming logic, but harder to write, read, and maintain.
+  * **Declarative Pipeline:** Declarative model, structured syntax (uses `pipeline {}` blocks). Enforces strict structure, easier to read, has built-in error checking, and is preferred for standard pipelines.
+
+### Q5: Compare Push-based CI/CD (e.g., GitHub Actions, Jenkins) vs. Pull-based CI/CD (GitOps like ArgoCD).
+* **Answer:**
+  * **Push-based:** CI/CD tool triggers execution and pushes the built artifacts/manifests to the target server (e.g., via SSH, `kubectl apply`). Requires sharing target environment credentials with the CI/CD server.
+  * **Pull-based (GitOps):** An agent running inside the target cluster (e.g., ArgoCD) continuously monitors the Git repository. When it detects changes in manifests, it pulls the changes and applies them locally. More secure because no external system needs credentials to write to the cluster.
+
+### Q6: How does Jenkins Controller/Agent (formerly Master/Agent) architecture work, and how do you scale it?
+* **Answer:** The **Controller** is the brain: it hosts the UI, configuration, plugins, and orchestrates build scheduling. **Agents** are workers that execute the actual builds. To scale Jenkins and prevent the Controller from becoming a bottleneck, developers:
+  1. Offload all build steps to agents (never run builds on the Controller).
+  2. Dynamically provision agents using Kubernetes (spinning up agent pods on-demand and tearing them down after the job finishes).
+
+---
+
+## 5. Jenkins & Modern CI/CD Alternatives
+
+### 1. Jenkins
+* **Overview:** Open-source, self-hosted automation server.
+* **Key Architecture:** Controller/Agent model.
+* **Pros:** Massive plugin ecosystem, highly customizable, free/open-source.
+* **Cons:** High maintenance overhead ("Plugin Hell"), UI is dated, configuration is hard to version control without Jenkins Configuration as Code (JCasC).
+
+### 2. GitHub Actions
+* **Overview:** Native automation tool inside GitHub.
+* **Key Architecture:** YAML-defined workflows run on GitHub-hosted or self-hosted runners.
+* **Pros:** Deep GitHub integration, marketplace for reusable actions, zero server maintenance.
+* **Cons:** Vendor lock-in to GitHub, free tier execution minute limits on private repos.
+
+### 3. GitLab CI/CD
+* **Overview:** Unified platform combining repository, CI/CD, container registry, and monitoring.
+* **Key Architecture:** GitLab Runner executes jobs defined in `.gitlab-ci.yml`.
+* **Pros:** Excellent container/Kubernetes integration, single platform for DevOps lifecycle.
+* **Cons:** Complex configuration options, git repository must be hosted on GitLab.
+
+### 4. GitOps Tools (ArgoCD / Flux)
+* **Overview:** Pull-based continuous delivery engines for Kubernetes.
+* **Key Architecture:** Agent in Kubernetes cluster syncs git repo state to live cluster state.
+* **Pros:** Auto-heals configuration drift, no cluster write access credentials exposed externally.
+* **Cons:** Kubernetes-specific, requires a separate tool/pipeline for the CI (build/test) phase.
+
