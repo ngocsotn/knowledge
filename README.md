@@ -1,6 +1,6 @@
 # Software Engineering Interview Knowledge Repository
 
-Comprehensive, high-quality, structured study guides covering staff-level concepts across 17 major software engineering categories.
+Comprehensive, high-quality, structured study guides covering staff-level concepts across 18 major software engineering categories.
 
 ---
 
@@ -106,7 +106,10 @@ Comprehensive, high-quality, structured study guides covering staff-level concep
 * [Rebase vs Merge](./git/rebase-merge/README.md)
 * [Git Internals & DAG Architecture](./git/internals/README.md)
 
-### 14. Data Structures & Algorithms (DSA)
+### 14. Operating System Fundamentals
+* [Operating System Fundamentals & Language Concurrency](./operating-system/README.md)
+
+### 15. Data Structures & Algorithms (DSA)
 * [Time & Space Complexity](./dsa/complexity/README.md)
 * [Arrays & Strings](./dsa/arrays-strings/README.md)
 * [Linked Lists](./dsa/linked-lists/README.md)
@@ -114,14 +117,14 @@ Comprehensive, high-quality, structured study guides covering staff-level concep
 * [Sorting & Searching](./dsa/sorting-searching/README.md)
 * [Dynamic Programming & Greedy Algorithms](./dsa/dynamic-programming-greedy/README.md)
 
-### 15. Project Management Methodologies
-* [Agile Methodologies](./Project%20methodologies/agile/README.md)
-* [Scrum Framework](./Project%20methodologies/scrum/README.md)
-* [Kanban System](./Project%20methodologies/kanban/README.md)
-* [Waterfall & V-Model](./Project%20methodologies/waterfall/README.md)
+### 16. Project Management Methodologies
+* [Agile Methodologies](./project-methodologies/agile/README.md)
+* [Scrum Framework](./project-methodologies/scrum/README.md)
+* [Kanban System](./project-methodologies/kanban/README.md)
+* [Waterfall & V-Model](./project-methodologies/waterfall/README.md)
 
-### 16. Culture Fit & Behavioral
+### 17. Culture Fit & Behavioral
 * [STAR Method & Behavioral Scenarios](./culture-fit/README.md)
 
-### 17. Staff Mock Interview Scenarios
+### 18. Staff Mock Interview Scenarios
 * [Comprehensive System Architecture Scenarios](./interview-scenarios/README.md)
