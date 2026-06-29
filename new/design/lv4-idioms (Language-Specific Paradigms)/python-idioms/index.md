@@ -1,0 +1,7 @@
+# Python Idioms
+
+## Topics
+
+- Duck Typing: "If it walks like a duck and quacks like a duck, it's a duck." Not checking an object's type, but simply checking if it has the required method at runtime.
+- Decorators (@staticmethod, @log): Wrapping a function with another function to cleanly modify its behavior.
+- Generators (yield): Functions that return an iterator that produces a sequence of values lazily (one at a time) to save memory.

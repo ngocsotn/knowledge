@@ -1,0 +1,2 @@
+Infrastructure & Topology
+These concepts deal with physical/virtual hardware, network routing, scaling databases across multiple servers, and handling global internet traffic.

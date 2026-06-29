@@ -1,0 +1,10 @@
+# Query Optimization
+
+## Topics
+
+- Execution Plan
+- Query Planner
+- CPU Bottleneck
+- Memory Bottleneck
+- I/O Bottleneck
+- ...

@@ -1,0 +1,6 @@
+String
+Hash
+List
+Set
+Sorted Set
+...

@@ -1,0 +1,6 @@
+ACID
+Transaction
+Isolation Level
+Locking
+MVCC
+...
