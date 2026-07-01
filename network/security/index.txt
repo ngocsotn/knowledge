@@ -1,5 +1,0 @@
-SSL
-TLS
-Certificate
-Handshake
-Mutual TLS (mTLS)

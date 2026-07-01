@@ -1,4 +1,0 @@
-Stateful Processing
-Windowing
-Aggregation
-...

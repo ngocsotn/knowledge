@@ -1,5 +1,0 @@
-Partition
-Consumer Group
-Offset
-Leader/Follower
-...

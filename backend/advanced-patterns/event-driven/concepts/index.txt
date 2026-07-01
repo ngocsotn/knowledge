@@ -1,6 +1,0 @@
-Message
-Event
-Queue
-Topic
-Pub/Sub
-...
