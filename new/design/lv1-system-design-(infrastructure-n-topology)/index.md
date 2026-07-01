@@ -1,15 +1,35 @@
-# Level 1: System Design (Infrastructure & Topology)
+# LEVEL 1: System Design (System Topology & Infrastructure)
 
-## Topics
-
-- Infrastructure & Topology
-- These concepts deal with physical/virtual hardware, network routing, scaling databases across multiple servers, and handling global internet traffic.
+Study guides covering network routing, load balancing, database replication, and system-level fault tolerance patterns.
 
 ## Subcategories
 
+- [Traffic Management & Security](./traffic-management-n-network-security-patterns/index.md)
+  - [DNS Round Robin](./traffic-management-n-network-security-patterns/dns-round-robin/index.md)
+  - [Infrastructure Rate Limiting](./traffic-management-n-network-security-patterns/rate-limiting-n-throttling-(infrastructure-level)/index.md)
+  - [IP Whitelisting & VPC Peering](./traffic-management-n-network-security-patterns/ip-whitelisting-n-vpc-peering/index.md)
 - [Caching Strategies](./caching-strategies/index.md)
-- [Data Storage Replication Patterns](./data-storage-replication-patterns/index.md)
-- [Distributed System Failover Communication](./distributed-system-failover-communication/index.md)
-- [High Availability & Disaster Recovery Patterns](./high-availability-n-disaster-recovery-patterns/index.md)
-- [Networking Routing Patterns](./networking-routing patterns/index.md)
-- [Traffic Management & Network Security Patterns](./traffic-management-n-network-security-patterns/index.md)
+  - [Cache Aside](./caching-strategies/cache-aside-(lazy-loading)/index.md)
+  - [Write Through](./caching-strategies/write-through-cache/index.md)
+  - [Content Delivery Networks (CDNs)](./caching-strategies/cdn-(content-delivery-network)/index.md)
+- [Network Routing Patterns](./networking-routing%20patterns/index.md)
+  - [Load Balancing](./networking-routing%20patterns/Load%20Balancing%20(Round%20Robin,%20Least%20Connections)/index.md)
+  - [Anycast Routing](./networking-routing%20patterns/Anycast%20Routing/index.md)
+  - [Reverse Proxy](./networking-routing%20patterns/Reverse%20Proxy/index.md)
+- [Distributed System Communication](./distributed-system-failover-communication/index.md)
+  - [PACELC Theorem](./distributed-system-failover-communication/PACELC%20Theorem/index.md)
+  - [Amdahl's Law](./distributed-system-failover-communication/Amdahls%20Law/index.md)
+  - [Circuit Breaker](./distributed-system-failover-communication/Circuit%20Breaker%20(System%20Level)/index.md)
+  - [Gossip Protocol](./distributed-system-failover-communication/Gossip%20Protocol/index.md)
+  - [CAP Theorem](./distributed-system-failover-communication/CAP%20Theorem/index.md)
+  - [8 Fallacies](./distributed-system-failover-communication/The%208%20Fallacies/index.md)
+  - [Heartbeat & Ping](./distributed-system-failover-communication/Heartbeat-Ping/index.md)
+- [Data Storage & Replication](./data-storage-replication-patterns/index.md)
+  - [Active-Active Multi-Master](./data-storage-replication-patterns/active-active-replication-(multi-master)/index.md)
+  - [Database Sharding](./data-storage-replication-patterns/sharding-(horizontal-partitioning)/index.md)
+  - [Active-Passive Master-Slave](./data-storage-replication-patterns/active-passive-replication-(master-slave)/index.md)
+  - [Write-Ahead Logging (WAL)](./data-storage-replication-patterns/write-ahead-logging-(wal)/index.md)
+- [High Availability & DR](./high-availability-n-disaster-recovery-patterns/index.md)
+  - [Active-Cold Standby](./high-availability-n-disaster-recovery-patterns/active-cold-standby/index.md)
+  - [Geographic Failover](./high-availability-n-disaster-recovery-patterns/geographic-failover-(geo-redundancy)/index.md)
+  - [Multi-Region DB Replication](./high-availability-n-disaster-recovery-patterns/multi-region-database-replication/index.md)

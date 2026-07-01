@@ -1,7 +1,9 @@
 # Computer Networks
 
+Comprehensive study guides for software engineering interviews covering network security, TLS handshakes, routing protocols, and socket scalability.
+
 ## Subcategories
 
-- [Others](./others/index.md)
-- [Protocols](./protocols/index.md)
-- [Security](./security/index.md)
+- [Network Security & TLS Handshakes](./security/index.md)
+- [Core Communication Protocols (HTTP, TCP, UDP)](./protocols/index.md)
+- [DNS & Distributed WebSockets Scaling](./others/index.md)

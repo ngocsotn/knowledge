@@ -1,6 +1,8 @@
 # Browsers & Web APIs
 
+Guides covering browser storage security, HTTP cache parameters, and content compression.
+
 ## Subcategories
 
-- [Compressed Content](./compressed-content/index.md)
-- [Cookies Storage Cache](./cookies-storage-cache/index.md)
+- [Cookies, LocalStorage & Cache Security](./cookies-storage-cache/index.md)
+- [Content Compression & Asset Optimization](./compressed-content/index.md)
