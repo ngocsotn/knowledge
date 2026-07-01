@@ -62,3 +62,29 @@ Caching improves performance but can leak sensitive user data if not configured 
 
 ### Q3: What does Cache-Control: no-store actually do, and when should you use it?
 * **Answer:** `Cache-Control: no-store` guarantees that the client browser, intermediate CDNs, and proxy servers do not store any part of the request or response in persistent storage or memory cache. It must be used for any API responses that contain Personally Identifiable Information (PII), financial records, or active session-token payloads to prevent access via local browser history or CDN cache leakage.
+
+### Q4: What is the "Cookie Prefix" specification (`__Host-` and `__Secure-`), and how does it prevent security misconfigurations?
+* **Answer:** Cookie Prefixes are special naming conventions enforced strictly by modern browsers to protect cookie attributes:
+  - **`__Secure-` Prefix:** Browser rejects setting this cookie unless the `Secure` flag is enabled (HTTPS only).
+  - **`__Host-` Prefix:** Browser rejects this cookie unless it has the `Secure` flag, lacks the `Domain` attribute (locking it strictly to the current host, preventing subdomain hijacking/overwrites), and has the `Path=/` attribute.
+  - *Impact:* Prevents "Cookie Toss" or domain injection attacks where a compromised subdomain (e.g., `dev.example.com`) overwrites cookies on the main parent domain (`example.com`).
+
+### Q5: What is Partitioned Cookies (CHIPS), and why was it introduced with third-party cookie retirement?
+* **Answer:** **Cookies Having Independent Partitioned State (CHIPS)** allows third-party cookies to be partitioned by the top-level site context.
+  - *Mechanism:* If `site-a.com` embeds `widget.com` which sets a partitioned cookie, that cookie is saved in a partition unique to (`site-a.com`, `widget.com`). If the user goes to `site-b.com` which also embeds `widget.com`, the widget cannot read the cookie from the `site-a.com` partition.
+  - *Impact:* Prevents cross-site tracking across the web while keeping embedded frames (such as chat widgets or payment forms) functional as browsers phase out raw third-party cookies.
+
+### Q6: If a server responds with highly sensitive content and a long cache age, but the user logs out, how can you force the browser to clear its cached pages and storage?
+* **Answer:** Serve the **`Clear-Site-Data`** HTTP response header on the logout request:
+  `Clear-Site-Data: "cache", "cookies", "storage"`
+  - *Behavior:* Instructs the browser to instantly purge the local storage, SessionStorage, cookies, and local cache databases associated with the domain origin. This prevents subsequent users on a shared terminal from accessing sensitive views using the browser's "Back" button or dev tools.
+
+### Q7: Compare LocalStorage vs. IndexedDB in terms of performance, data types, and main-thread blocking.
+* **Answer:**
+  - **Performance/Blocking:** `LocalStorage` is synchronous and blocks the browser's main UI thread during disk writes and reads. `IndexedDB` is asynchronous, event-driven, and relies on database transactions, keeping the main thread free.
+  - **Storage Limits:** `LocalStorage` is limited to ~5MB - 10MB of stringified JSON text. `IndexedDB` has no hard fixed quota; it can store gigabytes of complex structured data (binary Blobs, File objects, ArrayBuffers), capped only by browser-allocated client disk space.
+  - **Search:** `LocalStorage` is simple key-value only. `IndexedDB` supports advanced indexes, keyset range queries, and cursors.
+
+### Q8: Explain the `Vary` HTTP response header, and why `Vary: Accept-Encoding` is vital for CDNs.
+* **Answer:** The `Vary` header instructs upstream CDNs and browser caches to treat request header values as part of the cache key.
+  - *Example:* `Vary: Accept-Encoding` ensures that when a modern browser requests Brotli-compressed assets, it receives the Brotli version from the cache, while an older browser receives a Gzip or uncompressed fallback. Without the `Vary` header, a CDN might mistakenly serve uncompressed HTML to modern clients, or vice versa, causing slow loads or broken displays.
