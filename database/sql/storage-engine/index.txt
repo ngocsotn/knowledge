@@ -1,5 +1,0 @@
-Page
-Buffer Pool
-WAL
-Checkpoint
-...
