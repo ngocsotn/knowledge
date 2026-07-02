@@ -1,8 +1,6 @@
-# OAuth 2.0 & OpenID Connect (OIDC) Foundations
-
 # OAuth 2.0, OpenID Connect (OIDC) & Enterprise Identity Federation
 
-Comprehensive staff-level study guide covering delegated authorization (OAuth 2.0), identity federations (OIDC, SSO), offline access, multi-tenant JWT architectures, and advanced interview questions spanning all authentication topics.
+Comprehensive staff-level study guide covering delegated authorization (OAuth 2.0), identity federations (OIDC, SSO, SAML), multi-tenant JWT architectures, security hardening (PKCE, DPoP, Sender-Constrained Tokens), and advanced, scenario-based system architecture interview questions.
 
 ---
 
@@ -15,6 +13,25 @@ Comprehensive staff-level study guide covering delegated authorization (OAuth 2.
 4. **Resource Server**: The API hosting the protected user data (verified via access tokens).
 
 ### Standard OAuth 2.0 Grants/Flows
+
+```
+                      ┌────────────────────────────────────────┐
+                      │          Which OAuth Flow?             │
+                      └───────────────────┬────────────────────┘
+                                          │
+                        Is it Machine-to-Machine (M2M)?
+                                ┌─────────┴─────────┐
+                               Yes                  No
+                                │                    │
+                  ┌─────────────▼─────────────┐   Is it a Browser (SPA) or Mobile App?
+                  │  Client Credentials Grant │     ┌────────────┴────────────┐
+                  └───────────────────────────┘    Yes                        No
+                                                    │                         │
+                                      ┌─────────────▼─────────────┐    ┌──────▼──────┐
+                                      │  Auth Code Flow with PKCE │    │  Auth Code  │
+                                      └───────────────────────────┘    │  with Secret│
+                                                                       └─────────────┘
+```
 
 #### A. Authorization Code Flow with PKCE (Proof Key for Code Exchange)
 Mandatory for public clients (SPAs, mobile apps) that cannot securely store a `client_secret`. It replaces static secrets with a dynamic cryptographic challenge.
@@ -43,13 +60,17 @@ Mandatory for public clients (SPAs, mobile apps) that cannot securely store a `c
     $$\text{Verifier} = \text{random\_string}(43 - 128 \text{ chars})$$
   - **Code Challenge**: The SHA-256 hash of the verifier, Base64Url-encoded:
     $$\text{Challenge} = \text{Base64Url}(\text{SHA-256}(\text{Verifier}))$$
-  - **Verification Gating**: During token exchange (Step 4), the Auth Server calculates $\text{SHA-256}(\text{submitted\_verifier})$ and matches it with the registered `code_challenge`. This guarantees that the client exchanging the authorization code is the exact same client that initiated the authentication request.
+  - **Verification Gating**: During token exchange (Step 4), the Auth Server calculates $\text{Base64Url}(\text{SHA-256}(\text{submitted\_verifier}))$ and matches it with the registered `code_challenge`. This guarantees that the client exchanging the authorization code is the exact same client that initiated the authentication request.
 
 #### B. Client Credentials Grant
 Used for **Machine-to-Machine (M2M)** integrations (e.g., background cron jobs, billing microservices).
 - **Mechanism**: No user interface or end-user interaction.
-- The client sends its `client_id` and `client_secret` directly to the Auth Server via a POST request.
+- The client sends its `client_id` and `client_secret` directly to the Auth Server via a POST request with `grant_type=client_credentials`.
 - The Auth Server returns a highly restricted, short-lived Access Token.
+
+#### C. Implicit Flow & Resource Owner Password Credentials (ROPC)
+* **Implicit Flow (Deprecated)**: Directly returned access tokens in the URL redirect fragment (`#access_token=...`). Completely vulnerable to browser history harvesting, referral header leaks, and access token interception. **Replaced by Auth Code + PKCE**.
+* **ROPC (Deprecated)**: Required the user to input their password directly into the client application. Violates the core principle of delegated authorization (users should never share raw credentials with clients). **Replaced by Auth Code + PKCE or Federation**.
 
 ---
 
@@ -66,7 +87,218 @@ OIDC is an identity layer built on top of OAuth 2.0. While OAuth 2.0 is purely a
 
 ### OIDC Mechanisms
 * **The Scope `openid`**: The client must request the `openid` scope. This triggers the Auth Server to return an **ID Token** alongside the Access Token.
-* **The ID Token**: A cryptographically signed JWT containing claims about the authenticated user (e.g., `sub` user ID, `email`, `name`, `auth_time`).
-* **The `/userinfo` Endpoint**: A standardized, protected OIDC endpoint. The client can send the Access Token to this endpoint to retrieve verified user profile attributes.
+* **The ID Token**: A cryptographically signed JWT containing claims about the authenticated user:
+  ```json
+  {
+    "iss": "https://auth.company.com",
+    "sub": "user_98234710",
+    "aud": "client_spa_prod_01",
+    "exp": 1718300000,
+    "iat": 1718296400,
+    "auth_time": 1718296380,
+    "acr": "urn:mace:incommon:iap:silver",
+    "name": "Alex Mercer",
+    "email": "alex.mercer@company.com"
+  }
+  ```
+* **The `/userinfo` Endpoint**: A standardized, protected OIDC endpoint. The client can send the Access Token to this endpoint to retrieve verified user profile attributes if they aren't fully embedded in the ID Token.
+* **Discovery Document (`/.well-known/openid-configuration`)**: Standardized endpoint allowing clients to dynamically discover issuer metadata, authorization endpoints, token endpoints, JWKS URLs, supported scopes, and response types:
+  ```json
+  {
+    "issuer": "https://auth.company.com",
+    "authorization_endpoint": "https://auth.company.com/oauth/authorize",
+    "token_endpoint": "https://auth.company.com/oauth/token",
+    "jwks_uri": "https://auth.company.com/.well-known/jwks.json",
+    "userinfo_endpoint": "https://auth.company.com/userinfo"
+  }
+  ```
 
 ---
+
+## 3. Enterprise Single Sign-On (SSO) & Federation Mechanics
+
+Identity Federation bridges user directories across distinct organizational boundaries. It allows a user to authenticate once at a centralized **Identity Provider (IdP)** and gain access to multiple independent applications (**Service Providers - SP** or **Relying Parties - RP**).
+
+```
+ Application A (Client)               Central IdP                  Application B (Client)
+        │                                  │                                  │
+        ├─ 1. Redirect to Login ──────────>┤                                  │
+        │                                  │ (User enters credentials)        │
+        │                                  │ (Sets SSO Session Cookie)        │
+        <─ 2. Return Tokens (Sign In) ─────┤                                  │
+        │                                  │                                  │
+        │                                  │ ─── Later User Navigates to B ───│
+        │                                  ├─ 3. Redirect to Login ───────────┤
+        │                                  │ (Sees active SSO Cookie, auto-log)│
+        │                                  <─ 4. Return Tokens (Auto Sign In)─┤
+```
+
+### SSO Mechanics
+* **SSO Session Cookie**: The centralized IdP sets an encrypted, HttpOnly session cookie on its domain (e.g., `idp.company.com`).
+* **Silent Authentication**: When Application B redirects the user to the IdP, the browser automatically attaches the SSO session cookie. The IdP detects the active session, bypasses credential entry, and immediately issues tokens to Application B via redirect.
+
+### Enterprise Identity Protocols: SAML 2.0 vs. OIDC
+
+```
+  Metric                 SAML 2.0 (Security Assertion Markup Language)  OIDC (OpenID Connect)
+  ─────────────────────  ─────────────────────────────────────────────  ──────────────────────────────────────────
+  Data Format            XML (Heavyweight, canonicalization-sensitive)  JSON (Lightweight, simple serialization)
+  Transport Channel      HTTP POST binding (Browser-heavy POST forms)   Direct API Back-channel HTTP calls
+  Primary Ecosystem      Legacy Enterprise, Active Directory, Okta      Cloud-Native, Mobile Apps, Modern Web SPAs
+  Cryptographic Pattern  XML Signatures (DSIG) & XML Encryption         JSON Web Signatures (JWS) & JWK
+  Resource overhead      High (heavy payloads, parsing CPU usage)       Very Low (highly cacheable JWKS + JWTs)
+```
+
+---
+
+## 4. Multi-Tenant JWT & SaaS Identity Architectures
+
+In SaaS environments where multiple enterprise customers (tenants) share a single software deployment, the authentication architecture must enforce strict data isolation.
+
+```
+ Client (Tenant Acme) ──(Header: JWT iss=auth.com/acme)──► [API Gateway] ──(Injects X-Tenant-ID)──► [Downstream Services]
+                                                                │                                      │
+                                                                ├─► Fetch Public Key via               └─► Database Isolation
+                                                                │   auth.com/acme/jwks.json                (Row-Level Security)
+```
+
+### A. Core Multi-Tenant JWT Design
+1. **Tenant Claims**: Inject tenant identifier claims into the JWT payload during generation:
+   - `tid` (Tenant ID): `acme_corp`
+   - `iss` (Issuer): Tenant-specific issuer string (e.g., `https://auth.provider.com/acme_corp`).
+2. **Tenant-Specific Signing Keys**:
+   - For high isolation, sign each tenant's tokens using a tenant-specific private key.
+   - Expose public keys at tenant-specific JWKS paths: `https://auth.provider.com/tenants/<tenant_id>/.well-known/jwks.json`.
+3. **Gateway Routing and Verification**:
+   - The Gateway inspects the token's `iss` claim or extracts a subdomain (e.g., `acme.saas.com`) to identify the tenant.
+   - It fetches the tenant-specific public key from the matching JWKS endpoint and verifies the signature.
+   - The Gateway injects `X-Tenant-ID` into downstream headers to drive database routing or PostgreSQL Row-Level Security (RLS).
+
+---
+
+## 5. OAuth 2.0 Security Gaps & Hardening Controls
+
+### A. State Parameter & CSRF Protection
+During authorization redirects, an attacker can trick a user's browser into sending an authorization code to the client app that is bound to the attacker's account on the authorization server.
+- **Mitigation**: The client generates a high-entropy, random `state` parameter, stores it in the user's browser session (or cryptographically signs it into an encrypted cookie), and includes it in the authorization request. Upon redirect, the client asserts that the returned `state` matches the stored value.
+
+### B. Access Token Leakage & Sender-Constrained Tokens
+Standard OAuth 2.0 uses **Bearer Tokens**: anyone who possesses the token can use it. If an Access Token is stolen via XSS, MITM, or logged headers, the API cannot tell the difference between the legitimate client and the thief.
+- **Hardening via DPoP (Demonstrating Proof-of-Possession - RFC 9449)**:
+  - The client generates an ephemeral, local asymmetric key pair (public/private).
+  - Every time the client calls the API, it signs an ephemeral **DPoP proof** (a JWT signed with its private key) containing the HTTP method, request URI, and a unique timestamp/nonce.
+  - The API verifies the public key embedded inside the DPoP proof, hashes the request metadata, and compares it to the cryptographic signature. It then verifies that the Access Token itself is cryptographically bound to that exact public key (via a claim containing the key's thumbprint `cnf.jkt`).
+  - Stolen access tokens are useless because the attacker lacks the local client private key to sign the matching DPoP proof.
+
+### C. Token Introspection (RFC 7662) vs. Local JWT Validation
+* **Local JWT Validation**: The API Gateway/Resource Server decrypts/verifies the JWT signature offline using cached JWKS public keys. Very fast ($<1\text{ms}$), scalable, but lacks immediate revocation detection.
+* **Token Introspection (RFC 7662)**: The Resource Server performs a back-channel HTTP POST request to the Auth Server (`/introspect`) to check if the token is still valid.
+  - **Pros**: Dynamic, immediate revocation detection, works with opaque tokens (hiding internal user scopes from public clients).
+  - **Cons**: High latency network call on every API request, creates a massive database load on the Auth Server, forming a single point of failure (SPOF).
+
+---
+
+## 6. Detailed Scenario-Based Interview Q&As
+
+### Q1: How do you design and scale JWT-based authentication for a SaaS platform with strict tenant isolation?
+- **Answer**:
+  1. **Tenant-Bound Token Structure**: Embed custom tenant identifiers (`tid`) and tenant-specific issuers (`iss`) inside the JWT payload.
+  2. **Isolated Public Key Infrastructure**: Expose tenant public keys on dynamic JWKS routes (`https://auth.provider.com/tenants/<tenant_id>/.well-known/jwks.json`).
+  3. **Gateway Decoupling & Cache Tuning**: The API Gateway intercepts incoming requests, extracts the tenant subdomain/identifier from the URL/token, resolves the correct JWKS endpoint, and verifies the signature using an LRU cache with an active TTL to avoid hitting the Identity Provider (IdP) repeatedly.
+  4. **Downstream Injection & Database Isolation**: The Gateway propagates a verified, immutable `X-Tenant-ID` header downstream. Microservices consume this header to set connection pools dynamically or apply PostgreSQL Row-Level Security (RLS) policies:
+     ```sql
+     CREATE POLICY tenant_isolation_policy ON target_table
+     FOR ALL TO authenticated_role
+     USING (tenant_id = current_setting('app.current_tenant_id', true));
+     ```
+
+### Q2: Why is the PKCE flow mandatory for single page applications (SPAs) and mobile apps?
+- **Answer**:
+  SPAs and mobile apps are **public clients**; they operate completely within untrusted environments. If they used the traditional Authorization Code Flow without PKCE:
+  1. The client would redirect the user to log in and get an Authorization Code.
+  2. The browser redirects back to the client redirect URL. An attacker's malware on a mobile device or a rogue browser extension in an SPA can intercept this code (via custom URI scheme hijacking or browser history logs).
+  3. Because public clients cannot keep a `client_secret` safe without risking decompilation, they would attempt to exchange the code with no client secret. The thief can also do this and successfully obtain access tokens!
+  
+  **PKCE solves this**:
+  - The client generates a random cryptographically secure `code_verifier` and sends its hashed representation `code_challenge` in step 1.
+  - The Auth Server registers the challenge.
+  - When the client gets the Authorization Code, it sends the original `code_verifier` back during the token exchange.
+  - The Auth Server computes the hash of the verifier and validates it against the initial challenge.
+  - Since the malicious interceptor only has the Authorization Code and **cannot** derive the verifier from the challenge (SHA-256 is one-way), they cannot exchange the code for tokens.
+
+### Q3: How do SAML 2.0 and OpenID Connect (OIDC) compare, and how do you choose between them for enterprise SSO?
+- **Answer**:
+  - **Data Formatting & Ecosystem**: SAML 2.0 uses large, heavy XML structures containing highly structured SAML Assertions, heavily utilizing XML digital signatures (DSIG) and encryption. It is complex to parse and sensitive to XML canonicalization quirks. OIDC is built directly on OAuth 2.0, utilizing lightweight JSON formatted Web Tokens (JWTs) and standard RESTful HTTP channels, making it extremely friendly to modern web frameworks, mobile apps, and serverless stacks.
+  - **Protocols & Transport**: SAML depends heavily on browser-mediated redirections using standard HTTP POST/Redirect bindings (the browser is a heavy conduit forwarding assertion packets). OIDC separates browser redirect flows from secure, back-channel server-to-server API calls (e.g., code-exchange, userinfo, and JWKS queries).
+  - **Decision Matrix**:
+    - **SAML 2.0**: Choose when integrating with legacy enterprise Identity Providers (e.g., legacy Active Directory Federation Services - ADFS, Shibboleth) or older SaaS enterprise setups requiring strict enterprise federation standards.
+    - **OIDC**: Choose for modern cloud-native systems, microservice environments, mobile and single-page apps, and anywhere performance, API-driven scalability, and lightweight payload sizes are critical.
+
+### Q4: What is DPoP (Demonstrating Proof-of-Possession), and how does it prevent token replay attacks if an Access Token is stolen?
+- **Answer**:
+  Bearer tokens can be reused by any client that intercepts them. DPoP transforms Bearer tokens into **Sender-Constrained Tokens** by requiring cryptographic proof of possession of a private key.
+  1. **Key Generation**: The client creates an ephemeral, local asymmetric key pair (e.g., ES256).
+  2. **DPoP Proof**: On every request to the API, the client generates a unique JWT called a DPoP proof. This proof contains:
+     - `htm` (HTTP method: `POST`)
+     - `htu` (HTTP URI: `https://api.company.com/v1/payments`)
+     - `iat` (Current timestamp)
+     - `jti` (A unique, single-use UUID to prevent replay attacks)
+     - `jwk` (The client's public key in the JWT header)
+  3. **Token Binding**: When exchanging the auth code, the client sends this DPoP proof. The Authorization Server hashes the client's public key and binds its thumbprint `jkt` to the issued Access Token's `cnf` claim.
+  4. **API Validation**: The Resource Server receives the Access Token and the request's dynamic DPoP proof. It:
+     - Verifies the signature of the DPoP proof using the embedded public key.
+     - Asserts that the public key matches the thumbprint in the Access Token's `cnf.jkt` claim.
+     - Asserts that the HTTP method and URI in the proof match the current request.
+     - Tracks the `jti` in a fast cache (e.g., Redis) for its short lifespan to prevent identical proof replay.
+  If an attacker steals the Access Token, they cannot make API calls because they do not have the client's local private key to sign a valid, matching DPoP proof.
+
+### Q5: How do you handle logout and single log-out (SLO) across multiple federated apps under an SSO domain?
+- **Answer**:
+  Federated single sign-on creates independent sessions in multiple apps. Clearing a local app session does not invalidate sessions at the IdP or other sibling applications. Resolving SLO requires one of three standardized patterns:
+  1. **Front-Channel Logout (OIDC)**:
+     - When a user clicks log out in App A, App A clears its local cookie and redirects the user to the IdP's logout endpoint.
+     - The IdP clears its SSO cookie, loads an HTML landing page containing multiple hidden iframe tags pointing to the registered logout URLs of App B, App C, etc.
+     - The browser loads these iframe URLs, sending the third-party cookies of those respective apps, triggering them to clear their sessions. (Increasingly fragile due to modern browser third-party cookie blocking).
+  2. **Back-Channel Logout (OIDC - Highly Recommended)**:
+     - App A redirects the user to the IdP. The IdP invalidates the SSO session.
+     - The IdP directly sends a secure, back-channel HTTP POST request to the registered logout endpoints of all active client apps (App B, App C).
+     - This POST request carries a cryptographically signed **Logout Token** containing the user's `sub` (User ID) and the session identifier `sid`.
+     - App B's backend intercepts this post-request, verifies the IdP signature, and purges the matching session records in its session database/cache.
+  3. **Session Expiry & Introspection Fallback**:
+     - Keep short local session lifetimes on individual client apps (e.g., 15 minutes).
+     - Periodically perform silent authentication against the IdP in the background. If the IdP session is dead, immediately terminate the local application session.
+
+### Q6: Explain how the Device Authorization Grant (Device Flow) works under the hood for headless/input-constrained devices (e.g., Smart TVs, CLIs).
+- **Answer**:
+  Headless or input-constrained devices cannot present a standard browser interface to authenticate users. The Device Flow (RFC 8628) decouples authentication by moving the login prompt to the user's smartphone or PC:
+  1. **Initiation**: The headless device sends a back-channel HTTP POST to the Auth Server's `/device/authorize` endpoint with its `client_id`.
+  2. **Response**: The Auth Server returns:
+     - `device_code`: A long, secure, high-entropy unique key (kept secret by the device).
+     - `user_code`: A short, human-readable alphanumeric code (e.g., `WXYZ-ABCD`).
+     - `verification_uri`: The authentication URL (e.g., `https://company.com/activate`).
+     - `interval`: Polling frequency in seconds (e.g., `5`).
+  3. **Display**: The device renders the `user_code` and `verification_uri` on screen (optionally as a QR code).
+  4. **Polling**: The device immediately enters a background polling loop, calling `/token` every `interval` seconds, submitting `grant_type=urn:ietf:params:oauth:grant-type:device_code` and the `device_code`.
+  5. **Authentication**: The user scans the QR code or browses to the URL on their phone, authenticates with their central credentials, and types in the `user_code`.
+  6. **Completion**: During the next poll, the Auth Server detects that the user has successfully authorized the `user_code` bound to that `device_code`. It stops returning `authorization_pending` and returns the standard Access and ID Tokens to the headless device.
+
+### Q7: How does token introspection compare to local signature verification in terms of database/network latency, revocation, and security posture?
+- **Answer**:
+  - **Local Signature Verification**:
+    - **Latency**: Sub-millisecond ($<1\text{ms}$). The resource server verifies the JWT signature purely in-memory using public keys cached from the JWKS endpoint.
+    - **Revocation**: Weak. If a token is revoked, the Resource Server will continue to trust it until its `exp` claim expires, unless a supplementary database-backed revocation blocklist (e.g., Redis JTI blacklist) is query-checked.
+    - **Security Posture**: Exposes user claims directly to the client app and resource API since JWTs are readable. Excellent for decoupled high-performance microservices.
+  - **Token Introspection (RFC 7662)**:
+    - **Latency**: High ($10\text{ms} - 100\text{ms}$). Requires an HTTP network request (POST) back to the Authorization Server's `/introspect` endpoint for every single incoming API call.
+    - **Revocation**: Instantaneous. The moment a session is terminated on the Auth Server, introspection returns `active: false`.
+    - **Security Posture**: Excellent. Allows the use of random, opaque, reference tokens instead of structured JWTs. The client only sees a meaningless string, hiding all internal scopes, tenancy, and user metadata from public observation. Ideal for highly sensitive systems with strict zero-trust and immediate-revocation requirements (e.g., financial ledger actions).
+
+### Q8: How would you mitigate the Authorization Code Injection attack on a client application?
+- **Answer**:
+  In an Authorization Code Injection attack, an attacker intercepts a legitimate authorization code belonging to a user, pauses their own login flow, and injects that stolen authorization code into the target application's redirect URI handler.
+  
+  **Mitigations**:
+  1. **PKCE (Mandatory)**: PKCE is the primary mitigation. Since the Authorization Server ties the authorization code to the hash of the client's dynamic `code_verifier`, the attacker's injected code cannot be exchanged unless they also possess the original client's `code_verifier`. When the client attempts to exchange the attacker's injected code with its own verifier, the exchange fails because the hashes do not match.
+  2. **State Parameter Binding**: Ensure the client generates a unique `state` parameter bound to the user's active session. If the attacker triggers a redirect using a code generated from a separate session, the `state` parameter verified by the browser will fail to match.
+  3. **ID Token `c_hash` (Code Hash) Validation**: If using OIDC, the issued ID Token contains a `c_hash` claim, which is the left-half hash of the raw authorization code returned. The client must cryptographically verify that the SHA-256 hash of the authorization code it received matches the `c_hash` value in the signed ID Token. If they do not match, the code was injected and must be rejected.
+
