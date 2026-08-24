@@ -90,7 +90,50 @@ Retrieval models (embeddings) use bi-encoders to calculate vector dot products i
 
 ---
 
-## 5. Popular Interview Questions & High-Impact Answers
+## 5. Advanced Search Paradigms: GraphRAG, BM25 & Developer Workflows
+
+Enterprise-grade knowledge retrieval requires moving beyond simple vector similarity checks to support lexical precision and relational, cross-document reasoning.
+
+### A. BM25 (Sparse Search) vs. Dense Vector Embeddings
+
+| Dimension | BM25 (Sparse Keyword Search) | Dense Vector Search (Semantic Embeddings) |
+| :--- | :--- | :--- |
+| **Matching Mechanism** | Lexical TF-IDF. Counts exact matching word frequencies, penalizing long documents. | Mathematical cosine proximity of high-dimensional vectors on the heap. |
+| **Concept / Synonyms** | Blind. Fails completely if different words with same meaning are used (e.g., "doctor" vs "physician").| **Excellent**. Understands abstract concepts, intent, and synonyms natively. |
+| **Technical Strings** | **Excellent**. Instantly locks onto exact error codes (`ERR_404`), serial numbers, or git hashes.| Poor. Tends to blur specific technical alphanumeric characters into general semantic coordinates. |
+| **Index Maintenance** | Lightweight. Simple inverted text index lists, fast compile speeds. | Heavy. Requires specialized vector database clustering indexes (HNSW, IVFFlat) and massive RAM. |
+
+---
+
+### B. Relational Graph Search: GraphRAG vs. Vector RAG
+
+Standard Vector RAG assumes document information is localized in isolated chunks. This assumption crashes under global, relational, or multi-document aggregation queries.
+
+```
+VECTOR RAG (Isolated Chunks)
+Query ──► [Cosine Search] ──► Retrieves Chunk A, Chunk B ──► Fails to connect relational links
+
+GRAPHRAG (Connected Entities & Relationships)
+Query ──► [Extract Entities] ──► [Traverse Graph] ──► Retrieves connected Nodes and Edges
+                                                     (Entity A ──[Partners with]──► Entity B)
+```
+
+* **Vector RAG Limit (Relational Blindness):** If a user asks: "How does Company A's expansion plan affect its partnership with Company B?", standard Vector RAG fetches isolated paragraphs containing "Company A" or "Company B". It cannot structurally link how these entities relate across dozens of disparate files.
+* **GraphRAG (Knowledge Graphs):**
+  1. **Extraction:** An LLM pre-processes the entire document repository, extracting discrete **Entities** (Nodes: people, products, companies) and **Relationships** (Edges: "developed_by", "acquired_by", "partners_with").
+  2. **Graph Storage:** These nodes and edges are compiled and stored inside a **Property Graph Database** (e.g., Neo4j).
+  3. **Inference Traversal:** During a query, the system extracts the targeted entities, traverses the graph edges (multi-hop retrieval), and summarizes the connected entity communities, yielding deep, contextually-accurate relational answers that standard vector similarity can never match.
+
+---
+
+### C. AI Knowledge Bases in Software Engineering
+In daily software engineering operations, maintaining localized RAG knowledge bases is a key productivity multiplier:
+* **Codebase Indexing:** Parsing local repositories into abstract syntax trees (ASTs), chunking classes/functions structurally, and storing them in local vector indexes (e.g., via Cline, Continue, or custom Ollama setups).
+* **Workflow Optimization:** Instead of performing manual search loops through nested folders or third-party web docs, developers run local RAG queries directly from their terminal or IDE sidecars, retrieving contextual snippets (like specific API configurations or database migration guidelines) instantly.
+
+---
+
+## 6. Popular Interview Questions & High-Impact Answers
 
 ### Q1: Why is a Reranker (Cross-Encoder) critical in high-scale enterprise RAG pipelines?
 * **Answer:** Dense embeddings use **Bi-encoders**, which calculate independent vectors for documents and queries, matching them via simple vector dot products. This is highly performant but loses fine-grained contextual alignment, sometimes retrieving irrelevant chunks. A **Reranker (Cross-Encoder)** processes the query and document chunk *together* as a single input sequence, allowing self-attention to calculate deep, token-level matching weights. Because this is CPU-expensive, we use hybrid search first to quickly fetch the top 50 candidates, then run the precise Reranker to narrow them down to the top 5, drastically improving context quality while keeping latency low.
