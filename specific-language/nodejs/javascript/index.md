@@ -546,7 +546,168 @@ chat.next("I am great!"); // Partner said: I am great!
 
 ---
 
-## 14. Exception Handling: Try-Catch-Finally Mechanics
+## 14. Asynchronous Chains: Callbacks vs. Promises
+
+Asynchronous coordination has transitioned through major design improvements to optimize readability and handle failure scopes safely.
+
+### A. Callback Hell (The Pyramid of Doom)
+In early JavaScript, asynchronous execution relied solely on nested callback functions. Multiple sequential async tasks resulted in heavily nested, unreadable, and fragile code structures:
+
+```javascript
+// Callback Hell Model:
+fetchUser(101, (err, user) => {
+  if (err) return handleError(err);
+  fetchOrders(user.id, (err, orders) => {
+    if (err) return handleError(err);
+    processPayment(orders[0].total, (err, payment) => {
+      if (err) return handleError(err);
+      console.log("Success", payment);
+    });
+  });
+});
+```
+* *The Risks:*
+  1. **Brittle Error Handling:** Error validation logic must be written redundantly at every nested layer.
+  2. **Inflexible Execution:** It is highly difficult to execute tasks concurrently (e.g., waiting for multiple independent callbacks to settle before continuing).
+  3. **High Cognitive Load:** Horizontal code growth ("the pyramid of doom") makes tracing variables and execution branches extremely difficult.
+
+### B. Promise Chaining: The Flat Solution
+Promises flatten nested structures by encapsulating asynchronous success and rejection states, returning chainable `.then()` handlers:
+
+```javascript
+// Flat Promise Chain:
+fetchUser(101)
+  .then(user => fetchOrders(user.id))
+  .then(orders => processPayment(orders[0].total))
+  .then(payment => console.log("Success", payment))
+  .catch(err => handleError(err)); // Single, centralized error gate catches ANY failure in the chain!
+```
+* *Key Rule:* Every `.then()` must return a new Promise (or value) to keep the pipeline flowing. If you omit returning a value, the subsequent `.then()` will immediately execute with a parameter of `undefined`.
+
+---
+
+## 15. Memory Cloning: Shallow vs. Deep Clone
+
+When duplicating reference types (Objects and Arrays), developers must distinguish between pointer replication and independent memory allocation.
+
+```
+SHALLOW CLONE (Shares Nested Object References)
+Original Object ──> [Address 1] { data: { id: 101 } } <── Cloned Object
+(Mutating data.id in Cloned Object will silently modify Original Object!)
+
+DEEP CLONE (Completely Separate Memory Trees)
+Original Object ──> [Address 1] { data: { id: 101 } }
+Cloned Object   ──> [Address 2] { data: { id: 101 } }
+(Objects are completely decoupled!)
+```
+
+### A. Shallow Cloning
+Duplicates only the top-level keys. Any nested reference types (objects, arrays) are copied by **pointer address**, meaning the original and cloned objects continue to share the exact same nested memory blocks on the heap.
+* **Common Patterns:**
+  - Object Spread: `const clone = { ...original };`
+  - Array Spread: `const clone = [ ...original ];`
+  - Object Assign: `const clone = Object.assign({}, original);`
+  - Array Slice: `const clone = original.slice();`
+
+---
+
+### B. Deep Cloning
+Recursively replicates all nested levels, allocating entirely fresh memory addresses across the heap to guarantee total structural decoupling.
+
+#### 1. The Legacy Hack: `JSON.parse(JSON.stringify(obj))`
+```javascript
+const deepClone = JSON.parse(JSON.stringify(original));
+```
+* **Pros:** Fast and native. Works well for simple data configurations.
+* **Cons (Major Limits):**
+  - **Data Loss:** Completely discards fields holding `undefined`, `Symbol`, or Function variables.
+  - **Data Corruption:** `Date` objects are converted to flat ISO string primitives, and `RegExp` / `Map` / `Set` types are converted to blank empty objects `{}`.
+  - **Crash Vulnerability:** Throws a fatal crash (`TypeError: Converting circular structure to JSON`) if the target object contains any **circular references** (objects referencing themselves or their parents).
+
+#### 2. The Modern Standard: `structuredClone(obj)`
+Introduced recently as a native, optimized global API across browsers and modern Node.js runtimes:
+```javascript
+const deepClone = structuredClone(original);
+```
+* **Pros:** Highly optimized. Natively handles nested structures, Map, Set, Date, ArrayBuffer, RegExp, and successfully resolves **circular references** without crashing.
+* **Cons:** Still cannot clone Function wrappers or custom Class prototype constructors (throws a `DOMException` / `DataCloneError` if encountered).
+
+---
+
+## 16. Built-in Utility Libraries & Encoding APIs
+
+### A. The JSON Object Class
+* **`JSON.stringify(value, replacer, space)`:**
+  - Converts a JS object to a JSON string.
+  - *Replacer parameter (High-signal helper):* A function or array that filters or transforms serialized keys:
+    ```javascript
+    const log = JSON.stringify(user, ['id', 'email'], 2); // Only serializes specified keys with 2-space indentation
+    ```
+* **`JSON.parse(text, reviver)`:**
+  - Converts a JSON string back to a JS object.
+  - *Reviver parameter:* Automatically converts specific string formats back to rich types during parsing (e.g., reconstructing date strings back into native `Date` objects).
+
+### B. Standard Math Constants & Helpers
+* `Math.floor(x)`: Rounds down to the nearest integer.
+* `Math.ceil(x)`: Rounds up to the nearest integer.
+* `Math.round(x)`: Standard rounding to the nearest integer.
+* `Math.abs(x)`: Returns the absolute mathematical value of a number.
+* `Math.random()`: Returns a pseudo-random floating-point decimal between `0` (inclusive) and `1` (exclusive). **Security Warning:** `Math.random` is cryptographically insecure (not cryptographically strong pseudo-random number generator, CSPRNG). Never use it to generate session tokens, salts, or passwords. For security-critical needs, use the host `crypto` module: `crypto.randomBytes()`.
+
+### C. URI Encoding: `encodeURI()` vs. `encodeURIComponent()`
+Because URLs must strictly contain safe US-ASCII characters, browsers provide two distinct percent-encoding utility methods:
+
+* **`encodeURI(fullUri)`:**
+  - Designed to encode a **complete, functional URL**.
+  - **Characters Preserved:** Keeps all valid protocol, path, and query delimiters completely intact:
+    `;` `,` `/` `?` `:` `@` `&` `=` `+` `$` `#`.
+  - *Usage:* `encodeURI("https://site.com/search?q=hello world")` $\rightarrow$ `"https://site.com/search?q=hello%20world"` (only spaces are encoded, the URL structure remains fully valid).
+* **`encodeURIComponent(param)`:**
+  - Designed to encode a **single raw query parameter or sub-component**.
+  - **Characters Encoded:** Encodes **every** non-alphanumeric character, including all delimiters:
+    `;` `,` `/` `?` `:` `@` `&` `=` `+` `$` `#`.
+  - *Usage:* Crucial if you need to pass a full external URL as a parameter value inside a query string, preventing the parameter's slashes and question marks from corrupting the master URL's routing parser:
+    ```javascript
+    const callbackUrl = "https://my-app.com/callback?id=123";
+    const masterUrl = `https://auth.com/login?redirect=${encodeURIComponent(callbackUrl)}`;
+    // masterUrl compiles safely as:
+    // "https://auth.com/login?redirect=https%3A%2F%2Fmy-app.com%2Fcallback%3Fid%3D123"
+    ```
+
+---
+
+## 17. Essential Standard Array & String Methods
+
+### A. Non-Mutating vs. Mutating Array Methods
+Using **non-mutating** methods is critical for functional programming and state-driven frameworks (like React) to prevent side-effects.
+
+| Method Type | Non-Mutating (Returns a brand-new array copy) | Mutating (Modifies the original array physically in RAM) |
+| :--- | :--- | :--- |
+| **Methods** | `map()`, `filter()`, `concat()`, `slice()`, `flat()`, `toSorted()`, `toSpliced()`, `toReversed()` | `push()`, `pop()`, `shift()`, `unshift()`, `splice()`, `reverse()`, `sort()` |
+
+#### High-Impact Array Accumulator: `reduce()`
+The `.reduce(callback, initialValue)` method folds an array down into a single consolidated value (a number, string, array, or object) by iterating and passing a running accumulator:
+
+```javascript
+// Flattening and grouping items into a frequency Map using reduce:
+const products = ['apple', 'orange', 'apple', 'banana', 'apple'];
+const inventory = products.reduce((acc, product) => {
+  acc[product] = (acc[product] || 0) + 1;
+  return acc;
+}, {});
+
+console.log(inventory); // { apple: 3, orange: 1, banana: 1 }
+```
+
+### B. High-Signal String Methods
+* `slice(start, end)`: Extracts a section of a string and returns it as a new string. Handles negative indices (e.g., `-3` starts from the end).
+* `substring(start, end)`: Similar to slice, but treats negative numbers as `0` and swap indices if `start > end`.
+* `replace(pattern, replacement)`: Replaces only the first occurrence of a matching pattern/string.
+* `replaceAll(pattern, replacement)`: Replaces all occurrences.
+
+---
+
+## 18. Exception Handling: Try-Catch-Finally Mechanics
 
 The **`try...catch...finally`** statement manages error handling boundaries. A critical and highly tested concept is the **guarantee of the `finally` block execution**:
 
@@ -567,7 +728,7 @@ console.log(verifyFinally()); // "Value from Finally"
 
 ---
 
-## 15. Interview Masterclass: High-Impact Q&As
+## 19. Interview Masterclass: High-Impact Q&As
 
 ### Q1: Prove that `let` and `const` variables are hoisted, and explain how the Temporal Dead Zone (TDZ) affects their execution scope.
 * **Answer:**
@@ -606,3 +767,19 @@ console.log(verifyFinally()); // "Value from Finally"
   - If a `try` block executes a `return` statement, the engine caches that return value, but suspends the final function return.
   - It then executes the `finally` block.
   - If the `finally` block executes its own `return` or `throw` statement, **the cached return value from the `try` block is permanently discarded, and the value from `finally` is returned instead.**
+
+### Q7: Compare `encodeURI()` and `encodeURIComponent()`. When should you use one over the other?
+* **Answer:**
+  * **`encodeURI()`:** Encodes a full, functional URL. It keeps standard URL delimiter structural marks completely untouched (like `:`, `/`, `?`, `&`, `#`). Use this if you have a complete URL with parameters and simply need to encode spaces and non-ASCII characters to make it network-safe (e.g., `encodeURI("https://site.com/search?q=data science")`).
+  * **`encodeURIComponent()`:** Encodes raw query parameters. It converts **every** non-alphanumeric character into percent-encoding—including all delimiters like slashes, question marks, and colons. Use this when transmitting an entire external URL inside a query parameter (e.g., a login redirect URL: `?redirect=${encodeURIComponent(callbackUrl)}`), preventing the inner URL's delimiters from breaking the host URL's parameters parsing.
+
+### Q8: What are the differences between deep and shallow cloning in JavaScript, and what are the limitations of the JSON hack?
+* **Answer:**
+  * **Shallow Cloning:** Duplicates only the top-level keys. Any nested reference objects are copied by pointer address, meaning changes to a nested object in the clone will silently mutate the original object. Achieved via `{ ...obj }` or `Object.assign()`.
+  * **Deep Cloning:** Recursively clones all nested nodes, allocating separate, fully independent memory pools on the heap.
+  * *JSON Hack Limits:* `JSON.parse(JSON.stringify(obj))` is a common deep clone shortcut, but has major data corruption limits:
+    1. It discards `undefined`, functions, and `Symbol` fields.
+    2. It converts `Date` objects into string primitives.
+    3. It converts `RegExp`, `Map`, and `Set` types into empty objects `{}`.
+    4. It crashes immediately under **circular references**.
+  * *Modern Solution:* Use the native **`structuredClone()`** API, which resolves circular structures and handles advanced types smoothly, though it still cannot clone function scopes.
