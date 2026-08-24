@@ -877,3 +877,30 @@ To leverage the full potential of Node.js and the V8 Engine in production, apply
 3. **Prevent de-optimizations:** Build objects with predictable schemas. Always declare properties in the same order inside constructors. Avoid dynamic object manipulation and the `delete` keyword.
 4. **Enforce clean streaming pipelines:** Never read massive variables directly into Buffers. Use `.pipe()` or `stream.pipeline()` to manage automatic backpressure.
 5. **Architect for Process Isolation:** When using Clustering or PM2, externalize state (Sessions, Caches) to Redis or persistent databases to keep workers completely stateless and independently scaleable.
+
+---
+
+## 11. Interview Masterclass: High-Impact Q&As
+
+### Q1: How does the V8 Engine optimize property lookup via Hidden Classes, and what code patterns break this optimization?
+* **Answer:** Since JavaScript is dynamically typed, objects do not have fixed compile-time layouts. To speed up property access, V8 dynamically creates internal **Hidden Classes** (also called **Shapes** or **Maps**) that store direct memory offset addresses.
+  * *How it works:* If two objects share the same Hidden Class, V8 retrieves properties instantly via offset calculations without performing expensive hash table searches (achieving the **Monomorphic** state in Inline Caches).
+  * *What breaks it:*
+    1. **Dynamic property insertion:** Adding properties after instantiation changes the Hidden Class transition tree.
+    2. **Property order mismatch:** Declaring `{a: 1, b: 2}` and `{b: 2, a: 1}` results in two completely separate Hidden Classes.
+    3. **The `delete` operator:** Deleting properties de-structures the Hidden Class, forcing V8 to downgrade the object to "dictionary mode" (slow raw hash table lookups).
+
+### Q2: What is the V8 closure "Shared Context" memory leak, and how does it occur?
+* **Answer:** In V8, when any inner closure accesses a variable from its parent's outer lexical scope, V8 performs escape analysis and allocates a **Context Object** on the Heap containing *all* escaped lexical variables.
+  * *The leak:* **All inner closures created inside the same outer scope share the exact same Heap Context Object**. If a parent scope creates a long-lived closure (e.g., assigned to a global reference) and a short-lived closure that references a massive array, the massive array is attached to the shared Context Object. Because the long-lived closure remains in memory, the entire Context Object—including the unused massive array—remains pinned on the Heap, bypassing garbage collection.
+
+### Q3: Why does `setImmediate()` execute before `setTimeout(fn, 0)` when invoked inside an asynchronous I/O callback?
+* **Answer:** Inside an active I/O callback, the Event Loop is executing inside the **Poll Phase**.
+  * When the Poll Phase finishes the I/O callback, it checks the task queues.
+  * If a `setImmediate` is scheduled, the Event Loop immediately terminates the Poll Phase and advances to the **Check Phase** where `setImmediate` callbacks are run.
+  * Conversely, the expired `setTimeout` callback is stored in the **Timers Phase** queue. To execute it, the loop must finish the remaining phases (Check, Close Callbacks), complete the tick, and wrap around to the Timers Phase of the next tick. This guarantees `setImmediate` fires first.
+
+### Q4: How do you configure and scale the Libuv Thread Pool, and what workloads require it?
+* **Answer:** By default, Libuv runs a worker thread pool of size 4. This thread pool is used to offload blocking tasks that do not have asynchronous OS kernel drivers (such as `fs` disk reads/writes, DNS resolve names, and CPU-heavy cryptography like `crypto.pbkdf2` or `zlib` compression).
+  * *Tuning:* You can scale this by setting the environment variable `process.env.UV_THREADPOOL_SIZE = X` (up to 128) before the Node process boots. For systems handling massive concurrent disk I/O, scaling this pool prevents thread-pool starvation where filesystem tasks block cryptography API requests.
+
