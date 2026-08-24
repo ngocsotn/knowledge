@@ -20,6 +20,34 @@ The browser sends these requests directly and checks the returned `Access-Contro
 
 #### 2. Preflight Requests
 If a request violates any simple request condition (e.g., sends JSON payload via `application/json`, uses a `PUT`/`PATCH`/`DELETE` method, or includes custom headers), the browser automatically performs a **preflight** check:
+
+```
+          CORS PREFLIGHT (OPTIONS) HANDSHAKE SEQUENCE
+       
+Client (Browser)                                        Server (Backend)
+       │                                                       │
+ 1.    │─── OPTIONS /api/data (Preflight Request) ─────────────>│
+       │    Origin: https://my-frontend.com                    │
+       │    Access-Control-Request-Method: PUT                 │
+       │    Access-Control-Request-Headers: X-Custom-Header    │
+       │                                                       │
+ 2.    │<── 204 No Content / 200 OK (Preflight Response) ──────│
+       │    Access-Control-Allow-Origin: https://my-frontend.com
+       │    Access-Control-Allow-Methods: GET, PUT, POST       │
+       │    Access-Control-Allow-Headers: X-Custom-Header      │
+       │    Access-Control-Allow-Credentials: true             │
+       │    Access-Control-Max-Age: 7200                       │
+       │                                                       │
+ 3.    ├───────────────────────────────────────────────────────┤
+       │ Is Preflight Approved? Yes -> Send Real Request       │
+       ├───────────────────────────────────────────────────────┤
+       │                                                       │
+ 4.    │─── PUT /api/data (Actual Request) ────────────────────>│
+       │    (Contains custom headers & cookies)                │
+       │                                                       │
+ 5.    │<── 200 OK (Actual Response) ──────────────────────────│
+```
+
 1. Browser sends an HTTP `OPTIONS` request to the server first.
 2. It includes headers:
    * `Origin`: The calling website origin.

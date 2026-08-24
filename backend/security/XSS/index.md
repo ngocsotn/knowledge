@@ -36,6 +36,21 @@ XSS Vulnerability ├───► Reflected (Non-persistent) -> Query params/pay
 
 XSS defense must be applied multi-layered:
 
+```
+                    HTML ESCAPING VS. RICH SANITIZATION
+       
+CONTEXT-AWARE HTML ESCAPING (Strict plain-text safety)
+User Input ───> [Convert `<` to `&lt;`, `>` to `&gt;`] ───> Renders safely as text only
+(e.g., `<script>` displays as flat, non-executable letters: &lt;script&gt;)
+
+RICH HTML SANITIZATION (Permitting secure formatting, e.g. blog posts)
+User Input ───> [Parse HTML to in-memory DOM Tree] ───> [Scrub bad nodes / attributes] 
+                 - Keeps safe: `<b>`, `<i>`, `<p>`       - Expunges: `<script>`, `onerror=`
+                                                      │
+                                                      v
+                                           Safe rich HTML returned
+```
+
 ### 1. Context-Aware Output Encoding (Primary Defense)
 Never insert user input directly into HTML without escaping. Use specific escaping based on where the variable is placed:
 * **HTML Body:** Convert `<` to `&lt;`, `>` to `&gt;`, `&` to `&amp;`.

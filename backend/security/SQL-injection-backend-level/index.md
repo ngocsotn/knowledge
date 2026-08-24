@@ -26,6 +26,24 @@ The double-dash `--` is an SQL comment, ignoring the password check completely a
 
 ### 1. Parameterized Queries / Prepared Statements (Primary Defense)
 Parameterized queries separate SQL instructions from user-supplied data.
+
+```
+                     PREPARED STATEMENT EXECUTION MODEL
+       
+Step 1: Parse & Pre-compile (Instruction Definition Phase)
+Client ───(Sends SQL Template only)───> DB Engine
+          "SELECT * FROM users WHERE email = ?"
+                                           │
+                                           v  (DB Compiles execution path)
+                                    [SQL Query Compiled]
+                                           │
+Step 2: Parameter Execution (Literal Binding Phase)
+Client ───(Sends literal parameters only) ─┼───> [User Input bound safely as data]
+          "admin@example.com' OR '1'='1"   │     (Never parsed as SQL code)
+                                           v
+                                    [Query Safely Executed]
+```
+
 * **How it works:**
   1. The server compiles the SQL template with placeholders (`?`, `$1`) first.
   2. The database driver transmits the parameters separately.

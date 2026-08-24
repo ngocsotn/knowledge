@@ -48,8 +48,41 @@ In microservices or clustered environments, rate-limiting must be coordinated ac
 
 * **Redis** is the standard cache database used to persist rate-limiting states because of its speed and atomic operations.
 * **The Redis Race Condition:**
-  * When executing `GET` -> `INCR` -> `SET` sequence across parallel requests, a race condition can cause clients to exceed limits.
-  * *Mitigation:* Execute atomic **Lua Scripts** or use Redis commands like `INCR` directly which execute isolated and sequentially.
+  * When executing a separate `GET` -> logic check -> `INCR` -> `SET` sequence across parallel asynchronous requests, a race condition can cause clients to exceed the configured limits.
+  * *Mitigation:* Execute atomic **Lua Scripts** or use single Redis commands like `INCR` directly which run isolated and sequentially inside Redis's single-threaded event processor.
+
+### Production-Grade Redis Sliding Window Log Lua Script:
+This atomic Lua script implements a precise, race-condition-immune Sliding Window Log using Redis sorted sets (ZSET):
+
+```lua
+-- KEYS[1]: The client identifier key (e.g., "rate_limit:user_101")
+-- ARGV[1]: Current epoch timestamp (milliseconds)
+-- ARGV[2]: Sliding window duration (milliseconds, e.g., 60000 for 1 minute)
+-- ARGV[3]: Maximum request limit threshold
+
+local rate_limit_key = KEYS[1]
+local now = tonumber(ARGV[1])
+local window_duration = tonumber(ARGV[2])
+local max_limit = tonumber(ARGV[3])
+local clear_before = now - window_duration
+
+-- 1. Purge expired timestamps outside of the active sliding window
+redis.call('ZREMRANGEBYSCORE', rate_limit_key, 0, clear_before)
+
+-- 2. Fetch the current volume of active request logs inside the window
+local current_requests = redis.call('ZCARD', rate_limit_key)
+
+-- 3. Check threshold boundaries
+if current_requests < max_limit then
+    -- Add the current unique request timestamp to the sorted set
+    redis.call('ZADD', rate_limit_key, now, now)
+    -- Refresh the TTL to keep the key alive only for the duration of the window
+    redis.call('EXPIRE', rate_limit_key, math.ceil(window_duration / 1000))
+    return 1 -- APPROVED
+else
+    return 0 -- REJECTED
+end
+```
 
 ---
 

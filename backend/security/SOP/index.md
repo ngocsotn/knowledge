@@ -32,6 +32,24 @@ Without SOP, a malicious website running in one browser tab could execute JavaSc
 
 SOP does **not** block all cross-origin interactions. Browsers categorize resource access into three groups:
 
+```
+                 SOP CROSS-ORIGIN REQUEST PERMISSION MATRIX
+       
+    Request Type        | Browser Action  | Example / Mechanics
+  ──────────────────────┼─────────────────┼─────────────────────────────────────────
+  1. WRITES             |  ALLOWED        | - Form Submissions (HTML <form>)
+     (State changes)    |                 | - Page Link Redirections (<a href>)
+                        |                 | * Creates the vulnerability vector for CSRF!
+  ──────────────────────┼─────────────────┼─────────────────────────────────────────
+  2. EMBEDDINGS         |  ALLOWED        | - Script loading (<script src="...">)
+     (Asset loading)    |                 | - Media rendering (<img src="...">)
+                        |                 | - Frame containment (<iframe>)
+  ──────────────────────┼─────────────────┼─────────────────────────────────────────
+  3. READS              |  BLOCKED        | - Fetch / XHR response body queries
+     (Data retrieval)   |                 | - Reading DOM nodes inside iframes
+                        |                 | * Requires server CORS header override!
+```
+
 1. **Cross-Origin Writes:** Generally **allowed**. Links, redirects, and form submissions to another origin do not violate SOP.
 2. **Cross-Origin Embedding:** Generally **allowed**.
    * `<script src="..."></script>` (JavaScript)

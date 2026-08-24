@@ -27,6 +27,30 @@ DDoS attacks are categorized by the layer of the OSI model they target:
 * **Goal:** Exhaust server connection state tables or intermediate network equipment (firewalls, load balancers).
 * **Examples:**
   * **SYN Flood:** Exploits the TCP three-way handshake. The attacker sends thousands of TCP `SYN` requests with spoofed source IPs but never responds to the server's `SYN-ACK`. The server leaves these connections half-open, exhausting its finite connection pool.
+
+```
+                    SYN FLOOD EXPLOIT & SYN COOKIE SHIELD
+       
+VULNERABLE BACKLOG ALLOCATION (Memory Allocation on SYN)
+Client ───[SYN]───> Server (Allocates socket state in Backlog Queue memory)
+Client <──[SYN-ACK]─ Server
+[Attacker drops socket! Never sends final ACK] ───> Backlog Queue Fills up & Crashes!
+
+STATELESS SYN COOKIE DEFENSE (No memory allocated initially)
+Client ───[SYN]───> Server (Calculates cryptographically secure Sequence Number)
+Client <──[SYN-ACK (with Cookie in Seq)]─ Server (Allocates ZERO memory!)
+                                                      │
+                                           ┌──────────┴──────────┐
+                                           │  Does final ACK     │
+                                           │  contain valid Seq? │
+                                           └──────────┬──────────┘
+                                                      │
+                                           YES        │        NO
+                                    ┌─────────────────┴─────────────────┐
+                                    ▼                                   ▼
+                      [Allocate socket memory & CONNECT]          [Silently discard]
+```
+
 * **Mitigation:** SYN Cookies (stateless connection tracking), aggressive connection timeouts.
 
 ### 3. Application Layer Attacks (Layer 7)

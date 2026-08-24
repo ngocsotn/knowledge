@@ -40,9 +40,32 @@ By setting `SameSite=Lax` or `SameSite=Strict` on session cookies:
 
 ### 3. Double Submit Cookie Pattern (Stateless)
 * Perfect for stateless/REST APIs (no server session storage):
-  1. Server generates a random CSRF token and sets it as a client-side cookie (not necessarily `HttpOnly`, but `Secure`).
-  2. The frontend JavaScript reads this cookie and copies its value into a custom request header (e.g., `X-CSRF-Token`).
-  3. The server receives the request and validates that the token value in the cookie matches the token value in the custom header.
+
+```
+               DOUBLE-SUBMIT COOKIE PATTERN VERIFICATION
+       
+Client (Browser)                                        Server (REST API)
+       │                                                       │
+ 1.    │─── POST /api/payment ────────────────────────────────>│
+       │    Headers:                                           │
+       │      - Cookie: csrf-token=abc123xyz                   │
+       │      - X-CSRF-Token: abc123xyz                        │
+       │                                                       │
+ 2.    │                                            ┌──────────┴──────────┐
+       │                                            │  Token Match Check: │
+       │                                            │   Cookie Token ==   |
+       │                                            │   Header Token?     │
+       │                                            └──────────┬──────────┘
+       │                                                       │
+       │                                            YES        │        NO
+       │                                    ┌──────────────────┴──────────────────┐
+       │                                    ▼                                     ▼
+ 3.    │<── 200 OK (Processed!) ────────────                         [Return 403 Forbidden]
+```
+
+1. Server generates a random CSRF token and sets it as a client-side cookie (not necessarily `HttpOnly`, but `Secure`).
+2. The frontend JavaScript reads this cookie and copies its value into a custom request header (e.g., `X-CSRF-Token`).
+3. The server receives the request and validates that the token value in the cookie matches the token value in the custom header.
 * **Why it works:** A malicious site can cause a request to carry the cookie, but due to SOP, it cannot read the cookie to copy its value into the custom header.
 
 ---
