@@ -5,6 +5,7 @@ Advanced study guides for engineering modern AI systems, RAG networks, and auton
 ## Subcategories
 
 - [Retrieval-Augmented Generation (RAG) Architecture](./rag-architecture.md)
+- [LangChain: Building AI Applications with Reusable Components](./langchain.md)
 - [AI Orchestration Frameworks](./orchestration-frameworks.md)
 - [Agent Harness](./agent-harness.md)
 - [Agentic Workflows & Prompting](./agentic-workflows-prompting.md)
