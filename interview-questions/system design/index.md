@@ -356,11 +356,11 @@ Without idempotency, retries cause **duplicate side effects**: double charges, d
 
 | HTTP Method | Idempotent? | Explanation |
 |---|---|---|
-| `GET` | ✅ Yes | Reading data never changes state |
-| `PUT` | ✅ Yes | Replaces the entire resource; repeating produces same state |
-| `DELETE` | ✅ Yes | Deleting an already-deleted resource is a no-op |
-| `POST` | ❌ No | Creates a new resource each time; repeating creates duplicates |
-| `PATCH` | ⚠️ Depends | If the patch sets absolute values, yes. If it increments, no. |
+| `GET` | Yes | Reading data never changes state |
+| `PUT` | Yes | Replaces the entire resource; repeating produces same state |
+| `DELETE` | Yes | Deleting an already-deleted resource is a no-op |
+| `POST` | No | Creates a new resource each time; repeating creates duplicates |
+| `PATCH` | Depends | If the patch sets absolute values, yes. If it increments, no. |
 
 ### Implementing Idempotency
 
@@ -517,7 +517,7 @@ Honestly says: *"This is asynchronous and will resolve once with a User or rejec
 The power of monads is in composition. Without monads, nested nullability creates the pyramid of doom:
 
 ```typescript
-// ❌ Without monads: nested null checks
+// Without monads: nested null checks
 const user = getUser(id);
 if (user) {
   const address = user.address;
@@ -527,7 +527,7 @@ if (user) {
   }
 }
 
-// ✅ With monadic chaining: flat, readable, and safe
+// With monadic chaining: flat, readable, and safe
 getUser(id)
   .flatMap(user => user.address)
   .flatMap(address => address.city)
@@ -779,16 +779,16 @@ Modules communicate via:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│              MODULARITY ENFORCEMENT CHECKLIST             │
+│              MODULARITY ENFORCEMENT CHECKLIST            │
 ├──────────────────────────────────────────────────────────┤
-│  ✅  Each module has a single barrel export (index.ts)    │
-│  ✅  No deep imports across module boundaries             │
-│  ✅  Dependencies flow inward (Dependency Inversion)      │
-│  ✅  Cross-module communication via events or interfaces  │
-│  ✅  Lint rules enforce boundary violations at build time │
-│  ✅  Each module has its own test suite that runs solo     │
-│  ✅  Shared code lives in explicit `shared/` libraries    │
-│  ✅  No circular dependencies between modules             │
+│  [x] Each module has a single barrel export (index.ts)   │
+│  [x] No deep imports across module boundaries            │
+│  [x] Dependencies flow inward (Dependency Inversion)     │
+│  [x] Cross-module communication via events or interfaces │
+│  [x] Lint rules enforce boundary violations at build time│
+│  [x] Each module has its own test suite that runs solo   │
+│  [x] Shared code lives in explicit `shared/` libraries   │
+│  [x] No circular dependencies between modules            │
 └──────────────────────────────────────────────────────────┘
 ```
 

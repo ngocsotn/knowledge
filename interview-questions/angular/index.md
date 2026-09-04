@@ -282,12 +282,12 @@ Compile performance-critical algorithms in C, C++, or Rust to WebAssembly and in
 
 | Strategy | Thread | DOM Access | Best For |
 |---|---|---|---|
-| Web Workers | Separate | ❌ | CPU-heavy transforms, parsing |
-| `requestIdleCallback` | Main (yielded) | ✅ | Low-priority background work |
-| Virtual Scrolling | Main | ✅ | Rendering large lists |
-| Memoization / Pure Pipes | Main | ✅ | Repeated expensive calculations |
+| Web Workers | Separate | No | CPU-heavy transforms, parsing |
+| `requestIdleCallback` | Main (yielded) | Yes | Low-priority background work |
+| Virtual Scrolling | Main | Yes | Rendering large lists |
+| Memoization / Pure Pipes | Main | Yes | Repeated expensive calculations |
 | Server Offloading | Server | N/A | Massive datasets, ML, aggregation |
-| WebAssembly | Main or Worker | ❌ | Near-native computation |
+| WebAssembly | Main or Worker | No | Near-native computation |
 
 ---
 
@@ -309,10 +309,10 @@ this.users.push(newUser);
 Never modify an object or array in place. Always produce a **new reference**.
 
 ```typescript
-// ✅ SAFE: New array reference — OnPush detects this
+// SAFE: New array reference — OnPush detects this
 this.users = [...this.users, newUser];
 
-// ✅ SAFE: New object reference
+// SAFE: New object reference
 this.user = { ...this.user, name: 'Updated Name' };
 ```
 
@@ -329,7 +329,7 @@ interface User {
   readonly roles: readonly string[];
 }
 
-// ❌ Compile error: Cannot assign to 'name' because it is a read-only property
+// Compile error: Cannot assign to 'name' because it is a read-only property
 user.name = 'hacked';
 
 // Use Readonly<T> for deep protection on types
@@ -344,7 +344,7 @@ Angular Signals enforce mutation awareness by design. You cannot silently mutate
 // Signal: mutations are explicit and tracked
 users = signal<User[]>([]);
 
-// ✅ Explicit mutation — Angular knows about it
+// Explicit mutation — Angular knows about it
 this.users.update(current => [...current, newUser]);
 ```
 
@@ -388,12 +388,12 @@ Top-level functions are standalone functions declared at the module scope rather
 Bundlers (Webpack, esbuild, Vite/Rollup) can statically analyze and eliminate unused top-level functions during dead-code elimination. Class methods are bound to the class prototype and cannot be individually tree-shaken — if any part of the class is imported, the entire class is included in the bundle.
 
 ```typescript
-// ✅ Tree-shakable: if unused, bundler removes it entirely
+// Tree-shakable: if unused, bundler removes it entirely
 export function createUserGuard(): CanActivateFn {
   return () => inject(AuthService).isAuthenticated();
 }
 
-// ❌ Not tree-shakable at the method level
+// Not tree-shakable at the method level
 @Injectable()
 export class UserGuard implements CanActivate {
   canActivate() { return this.auth.isAuthenticated(); }
@@ -568,18 +568,18 @@ provideRouter(routes, withNavigationErrorHandler((error) => {
 The most common cause. When a component subscribes to a long-lived Observable (e.g., a `Subject`, `interval`, router events, store selectors) and the component is destroyed without unsubscribing, the subscription callback retains a closure reference to the destroyed component, preventing garbage collection.
 
 ```typescript
-// ❌ LEAK: subscription lives forever after component destruction
+// LEAK: subscription lives forever after component destruction
 ngOnInit() {
   this.dataService.stream$.subscribe(data => this.data = data);
 }
 
-// ✅ FIX: takeUntilDestroyed (Angular 16+)
+// FIX: takeUntilDestroyed (Angular 16+)
 stream$ = this.dataService.stream$.pipe(takeUntilDestroyed());
 
-// ✅ FIX: async pipe (auto-unsubscribes on component destroy)
+// FIX: async pipe (auto-unsubscribes on component destroy)
 // template: {{ stream$ | async }}
 
-// ✅ FIX: Manual destroy subject (legacy pattern)
+// FIX: Manual destroy subject (legacy pattern)
 private destroy$ = new Subject<void>();
 ngOnInit() {
   this.dataService.stream$.pipe(takeUntil(this.destroy$)).subscribe(data => this.data = data);
@@ -591,27 +591,27 @@ ngOnDestroy() { this.destroy$.next(); this.destroy$.complete(); }
 Adding listeners to `window`, `document`, or `body` inside a component without removing them on destroy.
 
 ```typescript
-// ❌ LEAK: listener persists after component dies
+// LEAK: listener persists after component dies
 ngOnInit() {
   window.addEventListener('resize', this.onResize);
 }
 
-// ✅ FIX
+// FIX
 ngOnDestroy() {
   window.removeEventListener('resize', this.onResize);
 }
 
-// ✅ BETTER: Use Renderer2 or RxJS fromEvent with takeUntilDestroyed
+// BETTER: Use Renderer2 or RxJS fromEvent with takeUntilDestroyed
 resize$ = fromEvent(window, 'resize').pipe(takeUntilDestroyed());
 ```
 
 **3. `setInterval` / `setTimeout` Not Cleared**
 
 ```typescript
-// ❌ LEAK
+// LEAK
 ngOnInit() { this.intervalId = setInterval(() => this.poll(), 5000); }
 
-// ✅ FIX
+// FIX
 ngOnDestroy() { clearInterval(this.intervalId); }
 ```
 
@@ -979,33 +979,33 @@ export const UsersStore = signalStore(
 
 | Aspect | Interface | Class |
 |---|---|---|
-| **Exists at runtime?** | ❌ No — erased during TypeScript compilation | ✅ Yes — compiled to JavaScript constructor function |
+| **Exists at runtime?** | No — erased during TypeScript compilation | Yes — compiled to JavaScript constructor function |
 | **Bundle size impact** | Zero | Adds code to the bundle |
-| **Can instantiate?** | ❌ No | ✅ `new MyClass()` |
-| **Can hold implementation?** | ❌ No (shape declaration only) | ✅ Yes (methods, constructors, state) |
-| **Can be used with `instanceof`?** | ❌ No | ✅ Yes |
-| **Can be used as DI token?** | ❌ No (TypeScript-only construct) | ✅ Yes (Angular DI resolves classes) |
-| **Supports multiple inheritance?** | ✅ Yes (`implements A, B`) | ❌ Single class inheritance only |
+| **Can instantiate?** | No | `new MyClass()` |
+| **Can hold implementation?** | No (shape declaration only) | Yes (methods, constructors, state) |
+| **Can be used with `instanceof`?** | No | Yes |
+| **Can be used as DI token?** | No (TypeScript-only construct) | Yes (Angular DI resolves classes) |
+| **Supports multiple inheritance?** | Yes (`implements A, B`) | Single class inheritance only |
 
 ### When to Use Interfaces
 
 Use interfaces when you need to define **the shape of data or a contract** without any behavioral implementation:
 
 ```typescript
-// ✅ Data Transfer Object shapes — no behavior, no instantiation needed
+// Data Transfer Object shapes — no behavior, no instantiation needed
 export interface UserDto {
   id: number;
   name: string;
   email: string;
 }
 
-// ✅ Service contracts — defines WHAT a service must do, not HOW
+// Service contracts — defines WHAT a service must do, not HOW
 export interface Logger {
   info(message: string): void;
   error(message: string, context?: unknown): void;
 }
 
-// ✅ Configuration typing
+// Configuration typing
 export interface AppConfig {
   apiUrl: string;
   featureFlags: Record<string, boolean>;
@@ -1017,7 +1017,7 @@ export interface AppConfig {
 Use classes when you need **runtime behavior, instantiation, DI tokens, or encapsulated state**:
 
 ```typescript
-// ✅ Angular Services — must be classes for DI
+// Angular Services — must be classes for DI
 @Injectable({ providedIn: 'root' })
 export class UserService {
   private cache = new Map<number, User>();
@@ -1030,7 +1030,7 @@ export class UserService {
   }
 }
 
-// ✅ Domain models with behavior
+// Domain models with behavior
 export class Money {
   constructor(private amount: number, private currency: string) {}
   add(other: Money): Money {
@@ -1047,7 +1047,7 @@ In Angular's dependency injection system, **interfaces cannot be used as injecti
 - An `InjectionToken<T>`
 
 ```typescript
-// ✅ Abstract class as DI token (preserves runtime identity)
+// Abstract class as DI token (preserves runtime identity)
 export abstract class Logger {
   abstract info(msg: string): void;
   abstract error(msg: string): void;
@@ -1056,7 +1056,7 @@ export abstract class Logger {
 // Provide a concrete implementation
 { provide: Logger, useClass: ConsoleLogger }
 
-// ✅ InjectionToken for interface-typed values
+// InjectionToken for interface-typed values
 export const APP_CONFIG = new InjectionToken<AppConfig>('app.config');
 { provide: APP_CONFIG, useValue: { apiUrl: '/api', featureFlags: {} } }
 ```
