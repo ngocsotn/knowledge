@@ -146,3 +146,81 @@ In daily software engineering operations, maintaining localized RAG knowledge ba
 
 ### Q3: What is "Lost in the Middle" in LLM prompting, and how does it affect RAG pipeline design?
 * **Answer:** Research shows that LLMs are highly proficient at identifying and utilizing context located at the very beginning or the very end of their input prompt. If critical information is located in the middle of a massive context window (e.g., injecting 30 raw text chunks), the model's self-attention layers frequently overlook it, leading to incorrect answers. To prevent this, RAG pipelines must limit the number of injected chunks (typically to 5-7 highly relevant chunks) using strict hybrid search, vector filtering, and Cross-Encoder Rerankers to prune out unneeded context.
+
+### Q4: How do you handle knowledge base storage inefficiency and token bloat in enterprise RAG pipelines?
+* **Answer:** Indiscriminately inserting every business rule or architectural constraint verbatim into an LLM's knowledge base causes **token bloat**, **retrieval noise**, and **vector embedding collisions**. To resolve this, enterprise pipelines apply a multi-tier compression and retrieval strategy:
+
+  1. **Hierarchical Knowledge Compression (Tiered Architecture):**
+     ```
+     ┌──────────────────────────────────────────────────────────────┐
+     │                  KNOWLEDGE TIER ARCHITECTURE                 │
+     ├──────────────────────────────────────────────────────────────┤
+     │                                                              │
+     │  TIER 1: Core Principles (Always in Context)                 │
+     │  ┌────────────────────────────────────────────────────────┐  │
+     │  │  Compressed, high-level rules and invariants.          │  │
+     │  │  Example: "All monetary calculations use BigDecimal."  │  │
+     │  │  Storage: System prompt / pinned context               │  │
+     │  └────────────────────────────────────────────────────────┘  │
+     │                                                              │
+     │  TIER 2: Domain Summaries (Retrieved On-Demand)              │
+     │  ┌────────────────────────────────────────────────────────┐  │
+     │  │  Condensed summaries grouped by domain/feature.        │  │
+     │  │  Example: "Billing domain: 14 rules (see details)"     │  │
+     │  │  Storage: RAG vector store, chunked by domain          │  │
+     │  └────────────────────────────────────────────────────────┘  │
+     │                                                              │
+     │  TIER 3: Granular Requirements (Drill-Down Access)           │
+     │  ┌────────────────────────────────────────────────────────┐  │
+     │  │  Full verbatim requirements with examples and edge     │  │
+     │  │  cases. Only loaded when specifically queried.         │  │
+     │  │  Storage: Document store / file system / database      │  │
+     │  └────────────────────────────────────────────────────────┘  │
+     │                                                              │
+     └──────────────────────────────────────────────────────────────┘
+     ```
+
+  2. **Semantic Deduplication:**
+     Before inserting a new requirement into the vector database, compute its embedding and run cosine similarity against existing entries. If similarity exceeds a high threshold (e.g., 0.92), **merge** the new requirement into the existing document rather than appending duplicate vectors:
+     ```
+     New requirement: "Prices must always be rounded to 2 decimal places."
+     Existing entry:  "All monetary values displayed to users must be rounded to two decimals."
+     Cosine similarity: 0.96 -> MERGE into existing entry
+     ```
+
+  3. **Abstractive Compression:**
+     Use an LLM summarization pipeline to distill verbose text into concise operational rules, keeping high-level summaries in Tier 1/2 while preserving full text in Tier 3 for deep reference:
+     ```
+     ORIGINAL (142 tokens):
+     "When a user submits a refund request for an order that was placed more than 30 days ago,
+     the system must check whether the product category is eligible for extended refund windows.
+     Electronics have a 14-day window, clothing has a 45-day window, and digital goods are
+     non-refundable after 7 days. If the window has passed, display error code REFUND_EXPIRED."
+
+     COMPRESSED (38 tokens):
+     "Refund eligibility: Electronics 14d, Clothing 45d, Digital 7d. Past window -> REFUND_EXPIRED."
+     ```
+
+  4. **Structured Knowledge Schemas:**
+     Structure entries with explicit metadata (`domain`, `tags`, `priority`, `supersedes`) to allow exact pre-filtering before running dense vector search:
+     ```json
+     {
+       "id": "REQ-BILLING-042",
+       "domain": "billing",
+       "type": "business_rule",
+       "priority": "critical",
+       "summary": "Refund windows are category-specific",
+       "rule": "Electronics: 14d, Clothing: 45d, Digital: 7d",
+       "detail_ref": "docs/billing/refund-policy.md",
+       "created": "2026-08-15",
+       "supersedes": ["REQ-BILLING-038"],
+       "tags": ["refund", "eligibility", "time-window"]
+     }
+     ```
+
+  5. **Knowledge Decay & Active Pruning:**
+     Implement a decay function based on access frequency. Frequently queried rules are promoted to higher context tiers, while stale or contradicted entries are superseded and archived.
+
+  6. **Agentic Tool-Based Access:**
+     Rather than stuffing all domain rules into the initial prompt context, provide the model with a **search tool** (`searchKnowledgeBase({ domain, query })`). The agent dynamically pulls granular entries on-demand only when relevant to the user's immediate question.
+
