@@ -1,6 +1,6 @@
-# System Design Interview Questions & Answers
+# Frontend System Design & Architecture
 
-Comprehensive study guide of real interview questions encountered while applying for an Angular frontend position. These questions are Angular-related but heavily centered on system design principles, software architecture, and cross-cutting engineering concerns.
+Comprehensive production study guide covering frontend system design, application layering, responsibility ownership, architectural paradigms, idempotency, monads, schema mismatch handling, and modular boundary enforcement.
 
 ## Table of Contents
 

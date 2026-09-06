@@ -1,6 +1,6 @@
-# Angular Interview Questions & Answers
+# Angular Architecture & Engineering
 
-Comprehensive study guide of real Angular-position interview questions encountered in the field. Covers framework internals, component architecture, state management, performance optimization, error handling, and TypeScript design decisions.
+Comprehensive production study guide and interview reference covering Angular framework internals, component architecture, change detection mechanics, signals, state management, performance optimization, and TypeScript design decisions.
 
 ## Table of Contents
 
