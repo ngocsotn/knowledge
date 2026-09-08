@@ -90,35 +90,85 @@ Use background jobs for:
 
 Avoid for tiny deterministic operations where queue overhead exceeds work.
 
-## Interview Questions
-
-### Why return `202 Accepted`?
-
-Because request accepted work, but processing has not finished. API should expose status or callback behavior.
-
-### What happens when worker crashes?
-
-Queue must detect lost lease or stalled job and make job available again. Worker must be idempotent because work may have partially completed.
-
-### How prevent API and job inconsistency?
-
-Use transactional outbox when database update and job publication must succeed together.
-
-### Example
-
-Order API commits order and outbox row in one transaction. Relay publishes `send-confirmation` job. Crash cannot leave committed order with no record of required work.
-
 ## Pros, Cons, and Cost
 
-**Pros:** faster APIs, controlled retries, burst absorption, independent worker scaling.  
-**Cons:** eventual completion, duplicate execution, status complexity, extra infrastructure.  
+**Pros:** faster APIs, controlled retries, burst absorption, independent worker scaling.<br>
+**Cons:** eventual completion, duplicate execution, status complexity, extra infrastructure.<br>
 **Cost:** queue storage, worker compute, Redis operations, monitoring, and on-call.
 
 ## Advanced Design
 
 Define completion semantics before coding. "Accepted", "completed", "failed", and "cancelled" need separate states. A user-facing status endpoint should not infer completion from queue presence alone.
 
-## End-to-End Example: Video Processing
+## Cancellation and Expiration
+
+Cancellation is a business decision:
+
+1. Set processing record to `cancel_requested`.
+2. Worker checks state before each expensive step.
+3. Worker stops safely if cancellation is allowed.
+4. Worker marks `cancelled`.
+
+Deleting a waiting job does not stop an already-running external process.
+
+## Capacity Planning
+
+Estimate:
+
+```text
+required workers = arrival rate * average processing time
+```
+
+Example: 10 jobs/second, each taking 2 seconds, needs about 20 concurrent slots before safety margin. Validate against CPU, memory, database, and provider limits.
+
+## Interview Questions and Answers
+
+
+#### Why return `202 Accepted`?
+
+Because request accepted work, but processing has not finished. API should expose status or callback behavior.
+
+#### What happens when worker crashes?
+
+Queue must detect lost lease or stalled job and make job available again. Worker must be idempotent because work may have partially completed.
+
+#### How prevent API and job inconsistency?
+
+Use transactional outbox when database update and job publication must succeed together.
+
+
+#### Why not put full database records in job data?
+
+Records become stale, payloads consume Redis memory, and schema changes become harder. Store identifiers and reload current state.
+
+#### How expose job result?
+
+Use status endpoint, webhook, notification, polling with backoff, or WebSocket. Keep result in durable application storage, not only queue metadata.
+
+#### What is eventual completion?
+
+Request success means work accepted, not finished. Business UI must represent pending and failure states honestly.
+
+
+#### When should an API return a job status URL?
+
+Return one when completion is not immediate, the client needs progress or a result, or retries may span multiple requests. The status resource should expose stable states such as `queued`, `running`, `succeeded`, `failed`, and `expired` without leaking internal worker details.
+
+#### How do you make job payloads safe to retry after a deploy?
+
+Use a versioned payload or a stable reference to the source record, and keep workers backward-compatible during rollout. Avoid embedding assumptions about in-memory objects or code-specific serialized classes.
+
+#### What is graceful shutdown for a worker?
+
+Stop accepting new jobs, allow active jobs a bounded drain period, extend or release leases safely, and exit. A forced kill should be treated as a crash and verified through redelivery tests.
+
+### Examples and Diagrams
+
+#### Example
+
+Order API commits order and outbox row in one transaction. Relay publishes `send-confirmation` job. Crash cannot leave committed order with no record of required work.
+
+#### End-to-End Example: Video Processing
 
 ```mermaid
 sequenceDiagram
@@ -144,37 +194,22 @@ sequenceDiagram
 
 Do not put video bytes into Redis. Store object reference, codec profile, tenant ID, and correlation ID in job data.
 
-## Cancellation and Expiration
+#### Practical example: video processing
 
-Cancellation is a business decision:
-
-1. Set processing record to `cancel_requested`.
-2. Worker checks state before each expensive step.
-3. Worker stops safely if cancellation is allowed.
-4. Worker marks `cancelled`.
-
-Deleting a waiting job does not stop an already-running external process.
-
-## Capacity Planning
-
-Estimate:
-
-```text
-required workers = arrival rate * average processing time
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant A as API
+    participant Q as Job queue
+    participant W as Worker
+    participant O as Object storage
+    C->>A: upload request
+    A->>Q: process(video_id, version)
+    A-->>C: 202 + status URL
+    Q-->>W: deliver job
+    W->>O: write derived video
+    W-->>A: mark succeeded
+    C->>A: poll status URL
 ```
 
-Example: 10 jobs/second, each taking 2 seconds, needs about 20 concurrent slots before safety margin. Validate against CPU, memory, database, and provider limits.
-
-## More Interview Questions
-
-### Why not put full database records in job data?
-
-Records become stale, payloads consume Redis memory, and schema changes become harder. Store identifiers and reload current state.
-
-### How expose job result?
-
-Use status endpoint, webhook, notification, polling with backoff, or WebSocket. Keep result in durable application storage, not only queue metadata.
-
-### What is eventual completion?
-
-Request success means work accepted, not finished. Business UI must represent pending and failure states honestly.
+The status record is durable and keyed by `video_id` plus processing version, so a retry does not overwrite a newer result accidentally.

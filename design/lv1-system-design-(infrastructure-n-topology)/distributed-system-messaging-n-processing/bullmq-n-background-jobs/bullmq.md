@@ -65,6 +65,8 @@ Reports lifecycle changes for dashboards and integrations. Events are not a repl
 
 Delayed and repeatable work needs scheduling logic. Use current BullMQ scheduling APIs for new designs and verify version-specific behavior before production.
 
+Treat failed jobs as a DLQ-like operational workflow, not as an automatic business dead-letter queue. Retain failure reason, attempts, stack or error class, job ID, schema version, and correlation ID; quarantine or replay only after the underlying cause is understood.
+
 ## Minimal Code
 
 ```ts
@@ -147,6 +149,7 @@ Do not mix critical queues with volatile cache data unless eviction, persistence
 - Separate queues by workload.
 - Schema version in job data.
 - Runbook for replay and cancellation.
+- DLQ or failed-job retention and redrive policy.
 
 ## Pros and Cons
 
@@ -221,27 +224,56 @@ One tenant can flood queue. Use per-tenant rate limits, queue partitioning, quot
 
 ## Interview Questions and Answers
 
-### Why use BullMQ instead of direct function call?
+
+#### Why use BullMQ instead of direct function call?
 
 Direct call blocks request and shares failure lifecycle. BullMQ gives retry, delay, worker scaling, and failure visibility.
 
-### Why use Redis?
+#### Why use Redis?
 
 Redis offers fast atomic data structures and coordination primitives. Trade-off: memory, persistence, and Redis operations become critical.
 
-### What happens when worker crashes?
+#### What happens when worker crashes?
 
 Active job lock eventually expires or job is detected stalled. Another worker may process it. Side effect must be idempotent.
 
-### How prevent completed-job memory growth?
+#### How prevent completed-job memory growth?
 
 Set completion retention, remove old jobs, and export needed audit information elsewhere.
 
-### How guarantee database update and job enqueue?
+#### How guarantee database update and job enqueue?
 
 Use transactional outbox or design reconciliation that finds missing jobs. Queue call alone cannot join arbitrary database transaction.
 
-### Example architecture question
 
-**Question:** Build asynchronous invoice generation.  
+#### How do stalled jobs arise in BullMQ?
+
+A worker can stop renewing its lock because of a crash, event-loop blocking, process pause, or network problem. BullMQ detects the missing lock and makes the job available again. The handler must therefore tolerate duplicate execution.
+
+#### How should Redis memory pressure be handled?
+
+Estimate active, delayed, completed, and failed job retention separately. Keep payloads small, remove old results, set explicit limits, and alert before Redis reaches eviction or out-of-memory conditions. Do not rely on eviction for correctness-critical queues.
+
+#### Can BullMQ guarantee exactly-once execution?
+
+No. Locks and retries reduce coordination problems but cannot atomically bind Redis delivery to arbitrary external side effects. Design handlers to be idempotent and make the business state transition the source of truth.
+
+### Examples and Diagrams
+
+#### Example architecture question
+
+**Question:** Build asynchronous invoice generation.<br>
 **Answer:** API writes invoice request and outbox record, returns `202`, relay adds BullMQ job, worker loads invoice by ID, generates PDF to object storage, updates status idempotently, retries temporary errors, sends permanent failures to review, and exposes status plus metrics.
+
+#### Practical example: transactional enqueue boundary
+
+```mermaid
+flowchart LR
+    API --> DB[(Application DB)]
+    DB --> O[Outbox row]
+    O --> P[Publisher]
+    P --> Q[(BullMQ/Redis)]
+    Q --> W[Worker]
+```
+
+The application transaction writes the outbox row with the business state. A publisher retries until the BullMQ job exists, avoiding the “database committed but enqueue failed” gap.

@@ -70,29 +70,9 @@ Producer -> Queue -> Worker -> completed or failed
 - **Failed:** Job exhausted attempts or encountered failure.
 - **Scheduler:** Promotes delayed or scheduled jobs.
 
-## Minimal Example
+An active job is protected by a Redis lock that the worker renews. If the worker crashes, blocks the event loop, or loses Redis long enough for renewal to fail, BullMQ can mark the job **stalled** and make it available again. This is why a job ID is not an exactly-once side-effect guarantee.
 
-```ts
-import { Queue, Worker } from "bullmq";
-
-const connection = { host: "localhost", port: 6379 };
-const emailQueue = new Queue("email", { connection });
-
-await emailQueue.add("send-welcome", {
-  userId: "user-123",
-  email: "user@example.com",
-});
-
-const worker = new Worker(
-  "email",
-  async (job) => {
-    if (job.name === "send-welcome") {
-      await sendWelcomeEmail(job.data.email);
-    }
-  },
-  { connection },
-);
-```
+For recurring work, use BullMQ's current Job Scheduler APIs (version-dependent) with a deterministic schedule identity. Do not treat a repeatable schedule as a durable business calendar: store the schedule and occurrence in application data and make each occurrence idempotent.
 
 ## Architecture Choices
 
@@ -165,7 +145,65 @@ Cost includes:
 
 Small workloads may fit an existing Redis instance. Production workloads often deserve managed Redis or isolated capacity. Compare cost against managed SQS, RabbitMQ, or a database-backed job table.
 
-## Example: E-Commerce Email
+## Interview Questions and Answers
+
+
+#### What problem does BullMQ solve?
+
+It moves asynchronous work from request handlers to workers and provides job state, retry, delay, and concurrency controls.
+
+#### Is BullMQ a message broker?
+
+It is a job queue library built on Redis. It can move messages, but its primary abstraction is executable work, not general service routing or durable event replay.
+
+#### When should BullMQ not be used?
+
+Avoid it when many independent services need durable fanout, long event retention, replay, or Kafka-style consumer groups.
+
+#### How do you make BullMQ reliable?
+
+Use durable Redis, idempotent workers, bounded retries, backoff, failed-job handling, monitoring, graceful shutdown, and tested recovery.
+
+
+#### How should a BullMQ queue be separated by workload?
+
+Separate jobs when they have different latency SLOs, resource profiles, retry policies, or owners. A CPU-heavy video queue should not share workers with latency-sensitive password reset emails merely because both use Redis.
+
+#### What happens if Redis is healthy but all workers are down?
+
+Jobs remain pending or delayed until a worker returns, subject to retention and expiration. The API should expose accepted versus completed state and alert on queue age so “enqueue succeeded” is not mistaken for “work finished.”
+
+#### What should be in a BullMQ production runbook?
+
+Include Redis failover behavior, worker drain steps, stalled-job inspection, retry and DLQ procedures, safe replay commands, retention settings, and how to verify that external side effects are idempotent before reprocessing.
+
+### Examples and Diagrams
+
+#### Minimal Example
+
+```ts
+import { Queue, Worker } from "bullmq";
+
+const connection = { host: "localhost", port: 6379 };
+const emailQueue = new Queue("email", { connection });
+
+await emailQueue.add("send-welcome", {
+  userId: "user-123",
+  email: "user@example.com",
+});
+
+const worker = new Worker(
+  "email",
+  async (job) => {
+    if (job.name === "send-welcome") {
+      await sendWelcomeEmail(job.data.email);
+    }
+  },
+  { connection },
+);
+```
+
+#### Example: E-Commerce Email
 
 Checkout writes order state, then enqueues confirmation email. Worker sends email and retries provider timeout. User does not wait for email provider.
 
@@ -185,25 +223,20 @@ sequenceDiagram
     W->>Q: Complete or retry
 ```
 
-## Interview Questions and Answers
+#### Example design question
 
-### What problem does BullMQ solve?
-
-It moves asynchronous work from request handlers to workers and provides job state, retry, delay, and concurrency controls.
-
-### Is BullMQ a message broker?
-
-It is a job queue library built on Redis. It can move messages, but its primary abstraction is executable work, not general service routing or durable event replay.
-
-### When should BullMQ not be used?
-
-Avoid it when many independent services need durable fanout, long event retention, replay, or Kafka-style consumer groups.
-
-### How do you make BullMQ reliable?
-
-Use durable Redis, idempotent workers, bounded retries, backoff, failed-job handling, monitoring, graceful shutdown, and tested recovery.
-
-### Example design question
-
-**Question:** User upload triggers image processing. What do you choose?  
+**Question:** User upload triggers image processing. What do you choose?<br>
 **Answer:** Store original image, enqueue `resize-image`, return `202`, process with BullMQ worker, store output, expose status endpoint. No Kafka unless replayable image-event history is required.
+
+#### Practical example: email and thumbnail pipelines
+
+```mermaid
+flowchart LR
+    API[Application] --> R[(Redis)]
+    R --> E[Email workers]
+    R --> T[Thumbnail workers]
+    E --> SMTP[Email provider]
+    T --> S[(Object storage)]
+```
+
+Use separate queues and concurrency limits because SMTP is network-bound while thumbnail generation is CPU-bound. Both workers use an idempotency key derived from the domain object.

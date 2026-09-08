@@ -55,24 +55,10 @@ Writing same object version or using upsert can make repeat safe.
 
 Queue job ID alone may not protect side effect. Job can be recreated with new queue ID. Business operation ID must remain stable.
 
-## Interview Questions
-
-### Is idempotency same as exactly once?
-
-No. Execution may happen multiple times; business effect becomes one logical result.
-
-### Where store idempotency key?
-
-Durable database or provider system, not worker memory.
-
-### Example
-
-`capture-payment` carries `payment_attempt_id`. Worker retries after timeout. Payment service returns prior capture result instead of charging twice.
-
 ## Pros, Cons, and Cost
 
-**Pros:** safe retries, crash recovery, easier replay, protection from duplicate charges.  
-**Cons:** durable key storage, retention policy, race-condition design, provider limitations.  
+**Pros:** safe retries, crash recovery, easier replay, protection from duplicate charges.<br>
+**Cons:** durable key storage, retention policy, race-condition design, provider limitations.<br>
 **Cost:** idempotency table storage, unique indexes, provider features, and cleanup jobs.
 
 ## Advanced Design
@@ -98,16 +84,58 @@ Store status, request hash, result reference, and timestamps. Reject same key wi
 
 Two workers can receive same business operation concurrently. Unique constraint or atomic `INSERT ... ON CONFLICT` must decide one owner. A check-then-insert sequence without transaction can race.
 
-## More Interview Questions
+## Interview Questions and Answers
 
-### How long retain idempotency keys?
+
+#### Is idempotency same as exactly once?
+
+No. Execution may happen multiple times; business effect becomes one logical result.
+
+#### Where store idempotency key?
+
+Durable database or provider system, not worker memory.
+
+
+#### How long retain idempotency keys?
 
 At least longer than maximum client retry, queue retry, provider retry, and reconciliation window. Delete only after late duplicate cannot arrive.
 
-### What if first attempt remains `processing` forever?
+#### What if first attempt remains `processing` forever?
 
 Use lease expiration and recovery worker. Do not let permanent `processing` block operation indefinitely.
 
-### Why hash request payload?
+#### Why hash request payload?
 
 Same idempotency key with different payload is usually client bug or abuse. Hash detects conflict and prevents ambiguous result.
+
+
+#### What should an idempotency record contain?
+
+Store the key, operation type, normalized request or resource identity, state, response or result reference, timestamps, and an expiry policy. The unique constraint must cover the business scope, such as `(tenant_id, operation, external_id)`, not merely a random request ID.
+
+#### How do you distinguish a duplicate from a conflicting request?
+
+A same-key request with the same normalized intent can return the original result. A same key with different material parameters should fail as a conflict, because silently applying the first request hides a client bug or replay attack.
+
+#### Does idempotency remove the need for locking?
+
+No. Idempotency prevents repeated final effects; locking or compare-and-set controls concurrent attempts. Use both when two workers could race before either has written the completion record.
+
+### Examples and Diagrams
+
+#### Example
+
+`capture-payment` carries `payment_attempt_id`. Worker retries after timeout. Payment service returns prior capture result instead of charging twice.
+
+#### Practical example: one shipment label
+
+```mermaid
+flowchart LR
+    J[Create-label job] --> I[(Idempotency table)]
+    I -->|new| P[Carrier API with key]
+    P --> I
+    I -->|existing success| R[Return saved label]
+    I -->|processing timeout| Q[Reconcile status]
+```
+
+The worker never creates a second label solely because its first carrier request timed out. It queries the carrier using the same idempotency key or reconciles the shipment state.
