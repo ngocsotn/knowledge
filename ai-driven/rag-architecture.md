@@ -660,16 +660,67 @@ Use whole-document context only when the document fits comfortably, query truly 
 ### Q1: Why is a Reranker (Cross-Encoder) critical in high-scale enterprise RAG pipelines?
 * **Answer:** Dense embeddings use **Bi-encoders**, which calculate independent vectors for documents and queries, matching them via simple vector dot products. This is highly performant but loses fine-grained contextual alignment, sometimes retrieving irrelevant chunks. A **Reranker (Cross-Encoder)** processes the query and document chunk *together* as a single input sequence, allowing self-attention to calculate deep, token-level matching weights. Because this is CPU-expensive, we use hybrid search first to quickly fetch the top 50 candidates, then run the precise Reranker to narrow them down to the top 5, drastically improving context quality while keeping latency low.
 
-### Q2: Compare IVFFlat and HNSW vector database indexing. When would you choose one over the other?
+### Q2: A RAG system serves two kinds of traffic. The reranker adds latency to every call, so when should you skip it?
+* **Answer:** Do not make reranking a mandatory step for every query. Treat it as a **quality-versus-latency budget decision**. First run fast retrieval, then estimate whether reranking is likely to change the selected evidence enough to justify its cost.
+
+  Use the reranker when:
+
+  - Query is ambiguous, natural-language, multi-hop, or requires subtle semantic matching.
+  - Top results have similar retrieval scores, indicating low confidence.
+  - Dense and sparse retrieval disagree.
+  - Query is high impact, such as legal, financial, security, medical, or permission-sensitive work.
+  - Initial results contain redundant, long, or noisy chunks.
+  - Evaluation shows reranking materially improves recall, answer faithfulness, or citation quality for this query class.
+
+  Skip or bypass the reranker when:
+
+  - Query is an exact lookup for an ID, error code, product key, URL, or known title.
+  - Metadata filters or an authoritative lookup return one unambiguous source.
+  - Retrieval confidence is high: top score is strong, score margin is large, and dense/sparse methods agree.
+  - Query targets a small, trusted collection with stable ranking quality.
+  - Request is latency-sensitive, such as autocomplete, interactive search suggestions, or high-volume simple FAQ traffic.
+  - A cache already stores validated query-to-document results.
+  - Reranker queue depth, latency, or cost exceeds the request's service-level budget.
+
+  The decision should use measurable signals, not query length alone. A long query can be an exact lookup; a short query such as "What is our refund exception?" can be ambiguous. Track reranker uplift by query class and route only classes that benefit.
+
+  ```mermaid
+  flowchart TD
+      Query[User query] --> Retrieve[Fast hybrid retrieval]
+      Retrieve --> Signals[Score margin, method agreement,<br/>query type, risk, cache, latency budget]
+      Signals --> Exact{Exact or authoritative lookup?}
+      Exact -->|Yes| Direct[Use retrieved result]
+      Exact -->|No| Risk{High-impact or uncertain query?}
+      Risk -->|Yes| Rerank[Run reranker]
+      Risk -->|No| Benefit{Expected reranker uplift<br/>fits latency and cost budget?}
+      Benefit -->|Yes| Rerank
+      Benefit -->|No| Direct
+      Rerank --> Context[Inject top evidence]
+      Direct --> Context
+  ```
+
+  A practical policy can be:
+
+  ```text
+  rerank =
+      high_risk
+      OR low_confidence
+      OR retrieval_disagreement
+      OR query_class_has_measured_reranker_uplift
+  ```
+
+  Always rerank high-risk queries unless a trusted, deterministic path answers them. For other traffic, use offline evaluation and production telemetry to tune thresholds. Compare answer quality, citation correctness, p50/p95 latency, reranker utilization, cache hit rate, and cost per request. If skipping reranking causes quality regression, widen the reranked cohort; if reranking adds latency without measurable uplift, narrow it.
+
+### Q3: Compare IVFFlat and HNSW vector database indexing. When would you choose one over the other?
 * **Answer:**
   * **IVFFlat** partitions the vector space into cells. It is highly memory-efficient and has fast index build times, but has lower retrieval recall (accuracy) under complex queries.
   * **HNSW** builds a hierarchical, multi-layered navigable graph. It provides state-of-the-art retrieval accuracy and sub-millisecond query latency, but consumes massive RAM resources to store the graph structures and requires longer index build times.
   * *Decision:* Choose **IVFFlat** for massive datasets on tight hardware budgets where minor recall loss is acceptable. Choose **HNSW** for production-critical search pipelines requiring maximum retrieval recall and sub-millisecond performance.
 
-### Q3: What is "Lost in the Middle" in LLM prompting, and how does it affect RAG pipeline design?
+### Q4: What is "Lost in the Middle" in LLM prompting, and how does it affect RAG pipeline design?
 * **Answer:** Research shows that LLMs are highly proficient at identifying and utilizing context located at the very beginning or the very end of their input prompt. If critical information is located in the middle of a massive context window (e.g., injecting 30 raw text chunks), the model's self-attention layers frequently overlook it, leading to incorrect answers. To prevent this, RAG pipelines must limit the number of injected chunks (typically to 5-7 highly relevant chunks) using strict hybrid search, vector filtering, and Cross-Encoder Rerankers to prune out unneeded context.
 
-### Q4: How do you handle knowledge base storage inefficiency and token bloat in enterprise RAG pipelines?
+### Q5: How do you handle knowledge base storage inefficiency and token bloat in enterprise RAG pipelines?
 * **Answer:** Indiscriminately inserting every business rule or architectural constraint verbatim into an LLM's knowledge base causes **token bloat**, **retrieval noise**, and **vector embedding collisions**. To resolve this, enterprise pipelines apply a multi-tier compression and retrieval strategy:
 
   1. **Hierarchical Knowledge Compression (Tiered Architecture):**
@@ -746,7 +797,7 @@ Use whole-document context only when the document fits comfortably, query truly 
   6. **Agentic Tool-Based Access:**
      Rather than stuffing all domain rules into the initial prompt context, provide the model with a **search tool** (`searchKnowledgeBase({ domain, query })`). The agent dynamically pulls granular entries on-demand only when relevant to the user's immediate question.
 
-### Q5: A model has a 200k-token context window, but a document contains 850k tokens. Why can’t we raise the limit through configuration, and how should we handle the document?
+### Q6: A model has a 200k-token context window, but a document contains 850k tokens. Why can’t we raise the limit through configuration, and how should we handle the document?
 * **Answer:** The context limit is constrained by model architecture, positional representation, tokenizer and provider limits, serving memory, KV-cache size, latency, and cost. Standard attention can require roughly quadratic work as token count increases; 850k versus 200k can represent about 18.1 times more attention pairs. Long-context optimizations reduce this cost but do not remove memory, quality, or serving constraints.
 
   Do not send the full document in one prompt. Parse it into a hierarchy, preserve metadata and permissions, create dense and sparse indexes, retrieve relevant chapters and chunks, rerank them, expand nearby context, and keep only evidence that fits the prompt budget. For broad questions, summarize bounded sections in parallel, reconcile the summaries, and run a final synthesis pass with citations. Use iterative retrieval when the first evidence set is incomplete.
