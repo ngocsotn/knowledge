@@ -110,18 +110,18 @@ Cons: separate data channels, passive port and certificate complexity.
 Pros: encrypted single connection, strong SSH authentication, simpler firewall model.  
 Cons: not wire-compatible with FTP, SSH server configuration required, performance and feature behavior vary by implementation.
 
-## Interview Questions
+## Interview Questions and Answers
 
-### Why does FTP use separate control and data connections?
+### Q1: Why does FTP use separate control and data connections?
 
-FTP separates commands and replies from file or directory data. This design predates modern multiplexed protocols but creates firewall and NAT complexity.
+* **Answer:** FTP separates commands and replies from file or directory data. This design predates modern multiplexed protocols but creates firewall and NAT complexity.
 
-### SFTP versus FTPS?
+### Q2: SFTP versus FTPS?
 
-SFTP is a file-transfer subsystem over SSH. FTPS is FTP protected with TLS. They use different protocols, ports, authentication models, and operational configurations.
+* **Answer:** SFTP is a file-transfer subsystem over SSH. FTPS is FTP protected with TLS. They use different protocols, ports, authentication models, and operational configurations.
 
-### How make file transfer reliable?
+### Q3: How make file transfer reliable?
 
-Use resumable transfers when supported, temporary filenames, checksums, explicit completion markers, retries with backoff, idempotent naming, and monitoring. Validate file content, not only connection status.
+* **Answer:** Use resumable transfers when supported, temporary filenames, checksums, explicit completion markers, retries with backoff, idempotent naming, and monitoring. Validate file content, not only connection status.
 
 ---

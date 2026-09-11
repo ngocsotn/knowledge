@@ -244,7 +244,7 @@ Following the 101 status, the HTTP parser is fully deactivated. Both parties rea
 
 ---
 
-## 5. Interview Masterclass: High-Impact Q&As
+## Interview Questions and Answers
 
 ### Q1: Detail how HTTP/3 completely resolves the transport-level Head-of-Line (HoL) blocking problem present in HTTP/2.
 * **Answer:**
@@ -266,4 +266,3 @@ Following the 101 status, the HTTP parser is fully deactivated. Both parties rea
   * If client-to-server frames were unmasked, a malicious browser script could send custom TCP bytes inside a WebSocket frame that mimic standard plain-text HTTP syntax (e.g., `GET /index.html`).
   * A transparent, legacy proxy might intercept this raw TCP byte flow, mistake it for a fresh HTTP request, fetch the resource, and cache a compromised or corrupted version, **poisoning the cache** for all other users behind that proxy.
   * Masking (XOR-encrypting the payload with a random 4-byte key) randomizes the bytes on the wire, making them appear as meaningless binary garbage to intermediate proxies, thereby preventing cache poisoning.
-

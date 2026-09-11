@@ -88,18 +88,18 @@ TTL tells resolvers how long a record may be cached. Long TTL reduces lookup loa
 - DNS itself can be attacked or abused
 - Name resolution does not prove application identity; TLS certificates do that
 
-## Interview Questions
+## Interview Questions and Answers
 
-### What happens when DNS is down?
+### Q1: What happens when DNS is down?
 
-Existing connections may continue, and cached records may still work. New connections that need name resolution can fail. Applications using hard-coded IPs may still connect, but this bypasses normal service discovery and certificate naming patterns.
+* **Answer:** Existing connections may continue, and cached records may still work. New connections that need name resolution can fail. Applications using hard-coded IPs may still connect, but this bypasses normal service discovery and certificate naming patterns.
 
-### What is DNS TTL?
+### Q2: What is DNS TTL?
 
-TTL is the cache lifetime for a DNS record. Resolvers should not retain the record beyond its TTL without refreshing it.
+* **Answer:** TTL is the cache lifetime for a DNS record. Resolvers should not retain the record beyond its TTL without refreshing it.
 
-### Does DNS provide security?
+### Q3: Does DNS provide security?
 
-DNSSEC can authenticate DNS data integrity and origin, but ordinary DNS is not encrypted. TLS separately authenticates and encrypts many application connections.
+* **Answer:** DNSSEC can authenticate DNS data integrity and origin, but ordinary DNS is not encrypted. TLS separately authenticates and encrypts many application connections.
 
 ---

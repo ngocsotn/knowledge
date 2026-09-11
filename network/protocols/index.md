@@ -34,6 +34,9 @@ flowchart TD
 | [SMTP](smtp/) | How email is submitted and relayed |
 | [IMAP](imap/) | How clients synchronize mailboxes |
 | [SSH](ssh/) | How remote access and secure channels work |
+| [VNC](vnc/) | How framebuffer-based remote desktop access works |
+| [RDP](rdp/) | How Windows remote desktop sessions work |
+| [Remote-access security](remote-access-security/) | How to secure VNC, RDP, SSH, and similar tools |
 | [HTTP evolution](http/) | How web protocol evolved from HTTP/0.9 to HTTP/3 |
 | [URL anatomy](url-anatomy/) | How URLs identify resources and actions |
 

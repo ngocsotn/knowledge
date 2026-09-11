@@ -79,18 +79,18 @@ Forwarding is powerful and can bypass network boundaries. Restrict it according 
 - Tunnels can hide unauthorized traffic
 - Long-lived sessions need timeout and audit controls
 
-## Interview Questions
+## Interview Questions and Answers
 
-### SSH versus TLS?
+### Q1: SSH versus TLS?
 
-SSH is a complete remote-access protocol with host authentication, user authentication, channels, shells, and forwarding. TLS secures transport for application protocols but does not itself define a remote shell.
+* **Answer:** SSH is a complete remote-access protocol with host authentication, user authentication, channels, shells, and forwarding. TLS secures transport for application protocols but does not itself define a remote shell.
 
-### Why verify SSH host keys?
+### Q2: Why verify SSH host keys?
 
-Host-key verification helps detect man-in-the-middle attacks. A changed key can be legitimate, but it requires independent verification before trust is updated.
+* **Answer:** Host-key verification helps detect man-in-the-middle attacks. A changed key can be legitimate, but it requires independent verification before trust is updated.
 
-### SFTP versus SSH?
+### Q3: SFTP versus SSH?
 
-SFTP runs inside SSH as a file-transfer subsystem. SSH can also provide shells, commands, and forwarding; SFTP is one channel use.
+* **Answer:** SFTP runs inside SSH as a file-transfer subsystem. SSH can also provide shells, commands, and forwarding; SFTP is one channel use.
 
 ---

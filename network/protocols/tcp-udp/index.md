@@ -92,19 +92,19 @@ TCP cost is mostly latency, memory, CPU, and operational state:
 
 HTTP/3 uses QUIC over UDP to solve some TCP limitations while reimplementing reliability and congestion control in user space.
 
-## Interview Questions
+## Interview Questions and Answers
 
-### TCP versus IP?
+### Q1: TCP versus IP?
 
-IP routes packets between hosts. TCP provides a reliable ordered byte stream between application endpoints using IP as its network layer.
+* **Answer:** IP routes packets between hosts. TCP provides a reliable ordered byte stream between application endpoints using IP as its network layer.
 
-### Why can TCP be slow on a lossy network?
+### Q2: Why can TCP be slow on a lossy network?
 
-Lost packets trigger retransmission. Because TCP presents an ordered stream, later bytes may wait until missing earlier bytes arrive. This creates delay even when later packets already reached the receiver.
+* **Answer:** Lost packets trigger retransmission. Because TCP presents an ordered stream, later bytes may wait until missing earlier bytes arrive. This creates delay even when later packets already reached the receiver.
 
-### Why does TCP need congestion control?
+### Q3: Why does TCP need congestion control?
 
-Without congestion control, many senders could overload shared links and routers. TCP reduces sending rate when loss, delay, or explicit congestion signals indicate network pressure.
+* **Answer:** Without congestion control, many senders could overload shared links and routers. TCP reduces sending rate when loss, delay, or explicit congestion signals indicate network pressure.
 
 ---
 
@@ -187,18 +187,18 @@ flowchart LR
 
 UDP is not inherently faster. It removes TCP features, but the application may need to rebuild reliability, encryption, congestion control, and connection management. QUIC is an example: it uses UDP as a substrate but adds sophisticated transport behavior above it.
 
-## Interview Questions
+## Interview Questions and Answers
 
-### When choose UDP over TCP?
+### Q4: When choose UDP over TCP?
 
-Choose UDP when low latency, message boundaries, multicast, or application-specific recovery matters more than automatic reliable ordering. Real-time media and DNS are common examples.
+* **Answer:** Choose UDP when low latency, message boundaries, multicast, or application-specific recovery matters more than automatic reliable ordering. Real-time media and DNS are common examples.
 
-### Can UDP be reliable?
+### Q5: Can UDP be reliable?
 
-Yes, but not by itself. An application protocol can add sequence numbers, acknowledgments, retransmission, integrity checks, and congestion control.
+* **Answer:** Yes, but not by itself. An application protocol can add sequence numbers, acknowledgments, retransmission, integrity checks, and congestion control.
 
-### Why does QUIC use UDP?
+### Q6: Why does QUIC use UDP?
 
-UDP gives QUIC control over transport behavior in user space and avoids requiring a new network-layer protocol. QUIC adds encrypted, multiplexed, reliable streams above UDP.
+* **Answer:** UDP gives QUIC control over transport behavior in user space and avoids requiring a new network-layer protocol. QUIC adds encrypted, multiplexed, reliable streams above UDP.
 
 ---

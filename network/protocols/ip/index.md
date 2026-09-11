@@ -87,18 +87,18 @@ Almost every networked application uses IP indirectly. Applications normally use
 - Routing and address management are complex
 - IPv4 NAT can complicate peer-to-peer communication
 
-## Interview Questions
+## Interview Questions and Answers
 
-### Why is IP not enough for reliable communication?
+### Q1: Why is IP not enough for reliable communication?
 
-IP only provides packet addressing and forwarding. It does not promise delivery, order, duplicate suppression, or congestion handling. TCP adds those services; UDP intentionally does not.
+* **Answer:** IP only provides packet addressing and forwarding. It does not promise delivery, order, duplicate suppression, or congestion handling. TCP adds those services; UDP intentionally does not.
 
-### What is the difference between an IP address and a port?
+### Q2: What is the difference between an IP address and a port?
 
-An IP address identifies a network interface or host location. A port identifies an application endpoint on that host. Together, destination IP and destination port guide traffic to the correct process.
+* **Answer:** An IP address identifies a network interface or host location. A port identifies an application endpoint on that host. Together, destination IP and destination port guide traffic to the correct process.
 
-### What does a router do?
+### Q3: What does a router do?
 
-A router forwards packets between networks. It uses the destination IP address and routing table to choose the next hop.
+* **Answer:** A router forwards packets between networks. It uses the destination IP address and routing table to choose the next hop.
 
 ---

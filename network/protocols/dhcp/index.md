@@ -62,18 +62,18 @@ Broadcasts help a new client discover a server before it has an IP address.
 - Lease changes can complicate debugging
 - Some devices need reservations or static configuration
 
-## Interview Questions
+## Interview Questions and Answers
 
-### Why does DHCP use broadcast at first?
+### Q1: Why does DHCP use broadcast at first?
 
-The client may not yet know its IP address or DHCP server address. A local broadcast allows available DHCP servers to hear the request.
+* **Answer:** The client may not yet know its IP address or DHCP server address. A local broadcast allows available DHCP servers to hear the request.
 
-### DHCP versus DNS?
+### Q2: DHCP versus DNS?
 
-DHCP configures a device's network settings. DNS resolves names and publishes service records. DHCP may tell a device which DNS resolver to use.
+* **Answer:** DHCP configures a device's network settings. DNS resolves names and publishes service records. DHCP may tell a device which DNS resolver to use.
 
-### What happens if DHCP fails?
+### Q3: What happens if DHCP fails?
 
-A device may have no usable address, gateway, or DNS configuration. Some operating systems assign a link-local address, but that normally supports only limited local communication.
+* **Answer:** A device may have no usable address, gateway, or DNS configuration. Some operating systems assign a link-local address, but that normally supports only limited local communication.
 
 ---

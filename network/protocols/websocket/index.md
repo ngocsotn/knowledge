@@ -84,18 +84,18 @@ WebSocket provides a channel, not guaranteed business delivery. If a client disc
 - Reconnection and message delivery need application design
 - Proxy timeout and load-balancer configuration matter
 
-## Interview Questions
+## Interview Questions and Answers
 
-### WebSocket versus HTTP polling?
+### Q1: WebSocket versus HTTP polling?
 
-Polling creates repeated requests and responses, adding latency and overhead. WebSocket keeps one connection and allows either side to send frames when needed.
+* **Answer:** Polling creates repeated requests and responses, adding latency and overhead. WebSocket keeps one connection and allows either side to send frames when needed.
 
-### Does WebSocket guarantee message delivery?
+### Q2: Does WebSocket guarantee message delivery?
 
-The WebSocket transport provides ordered delivery over its connection, but disconnection can lose messages not yet processed. Business-level durability requires acknowledgments, replay, or a durable broker.
+* **Answer:** The WebSocket transport provides ordered delivery over its connection, but disconnection can lose messages not yet processed. Business-level durability requires acknowledgments, replay, or a durable broker.
 
-### How scale WebSocket servers?
+### Q3: How scale WebSocket servers?
 
-Use connection-aware load balancing, shared authentication and session state, pub/sub for cross-node events, connection limits, heartbeat timeouts, and controlled reconnect behavior.
+* **Answer:** Use connection-aware load balancing, shared authentication and session state, pub/sub for cross-node events, connection limits, heartbeat timeouts, and controlled reconnect behavior.
 
 ---

@@ -69,18 +69,18 @@ Clients often fetch headers first, then download bodies on demand. IMAP `IDLE` a
 - Synchronization conflicts require client logic
 - Large mailboxes need careful pagination and caching
 
-## Interview Questions
+## Interview Questions and Answers
 
-### Why keep email on server with IMAP?
+### Q1: Why keep email on server with IMAP?
 
-Server-side storage lets multiple clients share message state, folders, read flags, and deletion status.
+* **Answer:** Server-side storage lets multiple clients share message state, folders, read flags, and deletion status.
 
-### IMAP `IDLE` versus polling?
+### Q2: IMAP `IDLE` versus polling?
 
-`IDLE` keeps a session available for server notifications, reducing repeated polling requests and update latency. It still needs reconnect and timeout handling.
+* **Answer:** `IDLE` keeps a session available for server notifications, reducing repeated polling requests and update latency. It still needs reconnect and timeout handling.
 
-### How handle a 100,000-message mailbox?
+### Q3: How handle a 100,000-message mailbox?
 
-Fetch metadata incrementally, use server-side search, cache stable identifiers, paginate, avoid downloading every body, synchronize flags carefully, and handle UID validity changes according to IMAP rules.
+* **Answer:** Fetch metadata incrementally, use server-side search, cache stable identifiers, paginate, avoid downloading every body, synchronize flags carefully, and handle UID validity changes according to IMAP rules.
 
 ---

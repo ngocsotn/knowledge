@@ -71,22 +71,22 @@ These mechanisms address different problems. TLS protects a connection. SPF, DKI
 - Many servers and policies participate
 - SMTP acceptance does not guarantee inbox placement
 
-## Interview Questions
+## Interview Questions and Answers
 
-### SMTP versus IMAP?
+### Q1: SMTP versus IMAP?
 
-SMTP sends and relays email. IMAP lets a user agent access and synchronize messages stored in a mailbox.
+* **Answer:** SMTP sends and relays email. IMAP lets a user agent access and synchronize messages stored in a mailbox.
 
-### Why query MX records?
+### Q2: Why query MX records?
 
-MX records identify mail exchangers responsible for receiving mail for a domain. SMTP senders use them to choose recipient mail servers.
+* **Answer:** MX records identify mail exchangers responsible for receiving mail for a domain. SMTP senders use them to choose recipient mail servers.
 
-### What does DKIM do?
+### Q3: What does DKIM do?
 
-DKIM attaches a cryptographic signature to selected message content and headers. A receiver retrieves the sender domain's public key from DNS and verifies the signature.
+* **Answer:** DKIM attaches a cryptographic signature to selected message content and headers. A receiver retrieves the sender domain's public key from DNS and verifies the signature.
 
-### Why can email be accepted but not arrive in inbox?
+### Q4: Why can email be accepted but not arrive in inbox?
 
-Later filtering, policy checks, reputation systems, mailbox rules, bounces, or provider processing can reject, quarantine, classify, or delay the message after an earlier SMTP server accepted it.
+* **Answer:** Later filtering, policy checks, reputation systems, mailbox rules, bounces, or provider processing can reject, quarantine, classify, or delay the message after an earlier SMTP server accepted it.
 
 ---
