@@ -156,3 +156,53 @@ When you store redundant data, you face three primary database anomalies:
      * *Pitfall:* Highly fragile. If another developer writes a new feature that updates the database without writing to the redundant field, the database immediately drifts.
   3. **Event-Driven Outbox / CDC (Asynchronous):** Update the normalized table, write an outbox event, and let an async worker or CDC connector (Debezium) update the denormalized read models asynchronously.
      * *Pitfall:* Introduces **eventual consistency**. The application must tolerate a delay where a user updates their profile name but sees their old name on existing comments for a few seconds. This is the standard pattern for high-scale enterprise SaaS systems.
+
+### Q5: An API normally responds in 100 ms, but suddenly takes 5–10 seconds while database CPU reaches 95%. What do you investigate first, and how do you fix it?
+
+* **Answer:** Treat the database as the leading bottleneck, then prove which workload consumes its CPU before changing indexes or adding hardware. Compare a healthy time window with the incident window: request rate, query latency, rows examined, lock waits, connection-pool wait, cache hit rate, and database CPU.
+
+  ```mermaid
+  flowchart TD
+      A[API latency rises to 5-10 seconds] --> B[Confirm database CPU and wait metrics]
+      B --> C[Inspect slow query logs and top query fingerprints]
+      C --> D{What changed?}
+      D -->|Plan or index regression| E[EXPLAIN ANALYZE and fix index or query]
+      D -->|Query count spike| F[Find N+1 or sudden traffic]
+      D -->|Sessions waiting| G[Inspect locks and long transactions]
+      D -->|Pool wait| H[Fix pool sizing, leaks, or slow queries]
+      E --> I[Deploy safely and measure]
+      F --> I
+      G --> I
+      H --> I
+  ```
+
+  Investigate in this order:
+
+  1. **Slow query logs and database activity.** Find top queries by total time, mean time, calls, rows read, and temporary files. Group normalized query fingerprints instead of inspecting only raw SQL. Example: one `SELECT ... WHERE user_id = ?` taking 4 seconds and running 20,000 times can dominate CPU even when each request looks small.
+  2. **Query execution plans.** Run `EXPLAIN` first, then carefully run `EXPLAIN ANALYZE` in a safe environment or read-only transaction. Compare estimated rows with actual rows. A plan that changed from an index scan to a sequential scan can indicate a missing index, stale statistics, data growth, or changed parameter selectivity.
+  3. **Missing or inefficient indexes.** Check filters, joins, sort keys, and composite-index column order. Example:
+
+     ```sql
+     CREATE INDEX CONCURRENTLY idx_orders_user_status_created
+     ON orders (user_id, status, created_at DESC);
+     ```
+
+     Add an index only when the workload and plan justify it. Indexes also increase write cost, storage, vacuum work, and database CPU.
+  4. **N+1 queries.** Inspect APM traces and query counts per API request. One endpoint loading 100 orders with one query per order creates 101 queries instead of one batched query. Replace the loop with eager loading, `JOIN`, or `WHERE id IN (...)`.
+  5. **Connection pool exhaustion.** Check active connections, idle connections, pool wait time, leaked connections, and transaction duration. A full pool can make API requests wait even when application CPU is normal. Do not fix this by blindly increasing pool size; too many database sessions can increase contention and CPU.
+  6. **Lock contention and long transactions.** Inspect blocked sessions, lock holders, deadlocks, idle transactions, and recent migrations or bulk writes. A transaction holding locks for minutes can make many queries wait and create a latency cascade.
+  7. **Sudden query-volume increase.** Check traffic, retries, scheduled jobs, deployments, feature flags, bot traffic, and missing pagination. A retry storm can multiply database work while API servers still look healthy.
+
+  Fix based on evidence:
+
+  - Kill or pause clearly runaway jobs only after confirming ownership and impact.
+  - Roll back a deployment or query-plan regression when incident timing matches.
+  - Add or correct indexes, then verify write and storage cost.
+  - Fix N+1 queries, add pagination, and batch reads.
+  - Refresh statistics when estimates are stale; rebuild indexes only when evidence supports corruption or severe bloat.
+  - Shorten transactions and resolve lock ordering or long-running writes.
+  - Bound retries, add backoff, and prevent retry storms.
+  - Tune connection pools to database capacity, not API instance count alone.
+  - Cache stable read results only after fixing inefficient database work; caching should not hide correctness or freshness bugs.
+
+  Do not start by adding application servers: normal API CPU and memory with database CPU at 95% points to a database workload, plan, lock, or connection problem. Do not add an index blindly, because an index can fail to match the query, increase write cost, or leave the true N+1 or lock issue unresolved. After each change, compare p50/p95/p99 latency, database CPU, query count, plan, lock waits, error rate, and correctness.
