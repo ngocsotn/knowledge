@@ -68,10 +68,108 @@ If files *must* be routed through your backend (e.g., for complex real-time pars
   _, err := io.Copy(s3UploadStream, fileUploadRequestReader)
   ```
 
----
+## Resumable Uploads for Large Files
 
-## Interview Questions & Answers
+### How can a user upload a 20 GB video without restarting after a network failure?
+
+Use a resumable multipart upload. The client splits the file into independent chunks, uploads each chunk separately, and stores upload progress. A network failure then affects only the current or failed chunk, not the complete file.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant API as Backend API
+    participant S as Object Storage
+    participant DB as Upload Metadata DB
+
+    C->>C: Split 20 GB file into chunks
+    C->>API: POST /uploads (size, type, file hash)
+    API->>S: Create multipart upload
+    S-->>API: upload ID
+    API->>DB: Save upload ID, hash, size, status
+    API-->>C: Upload ID and chunk instructions
+
+    loop Each pending chunk
+        C->>S: Upload chunk with part number and checksum
+        S-->>C: Part receipt or failure
+        C->>API: Save successful part metadata
+        API->>DB: Update uploaded parts
+    end
+
+    Note over C,S: Network failure at chunk 18
+    C->>API: Query upload status
+    API->>S: List uploaded parts
+    S-->>API: Parts 1-17 and 19-25
+    API-->>C: Resume missing chunk 18
+    C->>S: Upload chunk 18 only
+    C->>API: POST /uploads/{id}/complete
+    API->>S: Complete multipart upload
+    S-->>API: Final object
+    API->>DB: Mark upload complete
+```
+
+### Upload flow
+
+1. **Create an upload session.** The client sends file size, content type, chunk size, and a content hash. The backend authenticates the user, validates limits, creates a storage multipart session, and returns an opaque upload ID or UUID.
+2. **Split the file on the client.** Read the file as ranges instead of loading the 20 GB file into memory. Use a chunk size suited to the storage provider and network, commonly 5–100 MB.
+3. **Upload chunks independently.** Send each chunk with an upload ID, part number, byte range, and checksum. Upload several chunks in parallel, but cap concurrency to avoid exhausting browser, network, or storage limits.
+4. **Record successful parts.** Store part number, size, checksum, storage ETag, and upload timestamp. Make part writes idempotent so retrying the same part does not create duplicate logical data.
+5. **Retry only failed parts.** If chunk 18 fails, retry chunk 18. Do not resend chunks already confirmed by storage.
+6. **Resume after reconnect.** The client sends the upload ID and file identity to the backend. The backend verifies ownership and returns the confirmed parts. The client compares them with its local file and uploads only missing or invalid parts.
+7. **Complete atomically.** After every expected part is present and validated, the backend asks object storage to assemble the final object in part-number order. Mark the database record complete only after storage confirms success.
+
+### Important design details
+
+- **File identity:** Use a stable content hash to detect whether a resumed file is the same local file. MD5 can identify accidental changes, but use SHA-256 or provider checksums when integrity or security matters. Never use a client-provided hash as proof of authorization.
+- **Upload ownership:** Treat upload IDs as capabilities. Require authentication, check user or tenant ownership on every status, part, and completion request, and do not expose another user's upload state.
+- **Integrity:** Validate each chunk checksum before accepting it. Validate final size and final checksum before publishing the object.
+- **Ordering:** Chunks may upload in parallel, but completion must provide the correct part-number order.
+- **Progress:** Calculate progress from confirmed bytes, not request start events. Persist progress server-side so another browser tab or device can resume safely when supported.
+- **Expiration and cleanup:** Set an inactivity timeout. Abort incomplete multipart uploads after a defined period, such as 24 hours, and run lifecycle cleanup for abandoned sessions and metadata.
+- **Concurrency and limits:** Enforce maximum file size, chunk count, active uploads, per-user rate, and per-IP rate. Limit parallel chunks to protect the client and storage service.
+- **Publish state:** Keep incomplete objects private and hidden from consumers. Publish only after completion, malware scanning, metadata validation, and authorization checks finish.
+- **Crash recovery:** Treat object storage as the source of truth for uploaded parts. After backend restart, rebuild status by listing parts instead of trusting only an in-memory progress counter.
+
+### Minimal upload state
+
+```text
+Upload {
+  id
+  owner_id
+  storage_upload_id
+  file_hash
+  file_size
+  chunk_size
+  expected_chunk_count
+  uploaded_parts: [{ number, size, checksum, etag }]
+  status: initiated | uploading | completing | completed | aborted | expired
+  expires_at
+}
+```
+
+## 3. Popular Interview Questions & High-Impact Answers
 
 ### Q1: Why is uploading files directly to S3 via presigned URLs better than routing them through your API gateway, and how do you implement it securely?
-- **Answer:** Routing heavy file uploads through your API gateway is a massive scaling bottleneck: it consumes valuable web server memory buffers, exhausts network bandwidth, and keeps thread/connection pools open for long durations, leading to gateway starvation. Direct-to-S3 uploading offloads all heavy traffic, file buffering, and thread pool exhaustion to AWS's global infrastructure. 
-- To implement it securely: the backend validates user authorization, requests file size/type constraints, and generates a short-lived (e.g., 5-min) S3 presigned URL with strict HMAC-SHA256 signature constraints matching the exact `Content-Type` and `Content-Length` headers, enforcing those parameters during direct client-to-S3 execution.
+
+**Answer:** Routing heavy file uploads through your API gateway is a scaling bottleneck: it consumes web server memory buffers, network bandwidth, and connection pools for long periods. Direct-to-S3 uploading offloads file traffic, buffering, and long-lived connections to cloud storage.
+
+To implement it securely, the backend validates authorization, file size, and content type, then generates a short-lived S3 presigned URL with strict HMAC-SHA256 signature constraints. S3 enforces the signed request parameters during upload.
+
+### Q2: Why not upload the 20 GB file as one HTTP request?
+
+**Answer:** One request has a large failure domain. A timeout, connection reset, proxy limit, browser suspension, or server restart forces the client to restart the entire transfer. Multipart upload bounds the retry cost to one chunk and lets storage track progress independently.
+
+### Q3: Should chunks upload sequentially or in parallel?
+
+**Answer:** Use bounded parallelism. Sequential upload is simple and uses less memory, but wastes available bandwidth. Parallel upload improves throughput, while unlimited concurrency causes memory pressure, throttling, congestion, and more failed requests. Start with a small limit, such as 3–8 chunks, and tune it using measurements.
+
+### Q4: Is MD5 enough to verify a resumed upload?
+
+**Answer:** MD5 is useful for detecting whether the local file changed, but it is not collision-resistant and should not be the only integrity or security control. Use SHA-256 or storage-provider checksums for stronger verification, and validate authorization separately from file identity.
+
+### Q5: What happens when the backend crashes during upload?
+
+**Answer:** Keep upload metadata durable, but do not rely on metadata alone. On resume, authenticate the owner, query object storage for confirmed parts, reconcile the result with the database, and continue missing parts. A background job should abort sessions that remain inactive past their expiry.
+
+### Q6: How do you prevent abandoned uploads from consuming storage?
+
+**Answer:** Give every session an expiry time, refresh it only while authorized activity continues, abort expired multipart sessions, delete related metadata, and configure object-storage lifecycle rules as a second cleanup layer.

@@ -513,6 +513,62 @@ RETURNING scope, key;
 
 If no row returns, read the existing record and handle its state. The unique constraint is the race-safe arbiter; an application-level “check first, insert later” is not enough.
 
+### 7.4.1 Checkout example: safe `POST` retry
+
+For checkout, the client creates one UUID per user operation and sends it as `Idempotency-Key`. Every retry of that checkout must reuse the same key. A new checkout from the dashboard must create a new UUID, even when it uses the same cart.
+
+The server should scope the key by tenant, user, and operation. It should hash a canonical representation of the complete request body, then bind that hash to the key. Reusing one key with a different body is invalid and should return `409 Conflict`.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant API as Checkout API
+    participant DB as Database
+    participant P as Payment Provider
+
+    C->>C: Generate UUID K for this checkout
+    C->>API: POST /checkout + Idempotency-Key K
+    API->>API: Canonicalize body and calculate SHA-256
+    API->>DB: Begin transaction
+    API->>DB: Insert scoped key K + request hash
+    DB-->>API: Unique claim succeeds
+    API->>DB: Create order as pending
+    API->>DB: Commit local transaction
+    API->>P: Charge with provider key K
+    P-->>API: Success or uncertain result
+    API->>DB: Save payment and order status
+    API-->>C: Completed result
+
+    C->>API: Retry same body + key K
+    API->>DB: Find K
+    DB-->>API: Return stored status and result
+    API-->>C: Replay result, no second charge
+
+    C->>API: Same key K + different body
+    API->>DB: Compare request hash
+    DB-->>API: Hash mismatch
+    API-->>C: 409 Conflict
+```
+
+Use explicit status values so clients can tell what happened:
+
+```text
+initiated   request claimed, business work not started
+processing  local or external work in progress
+pending     result uncertain; reconciliation required
+succeeded   business effect completed
+failed      permanent failure; safe stored result
+expired     abandoned request past recovery window
+```
+
+Do not hold a database transaction open while calling the payment provider. Commit local `pending` state first, send the provider idempotency key, persist the provider result, and reconcile `pending` operations after timeout or crash. Local idempotency prevents duplicate API work; provider idempotency prevents duplicate external charges.
+
+Idempotency applies beyond carts: checkout, orders, payments, shipments, refunds, reservations, and notifications need an operation key whenever retrying can repeat a business effect.
+
+### 7.4.2 Why Redis is not the source of truth
+
+Redis can serve as a short-lived fast path for repeated retries or request polling, but it should not be the correctness boundary for idempotency. Cache eviction, expiration, restart, failover, replication lag, or inconsistent invalidation can remove a key while the business effect still exists. Store the key, request hash, durable status, and replay result in the database with a unique constraint and transaction. Use Redis only to reduce load after database correctness is established.
+
 ### 7.5 Concurrent same-key requests
 
 Two identical requests can arrive at the same moment:
@@ -1157,3 +1213,23 @@ Use an atomic Redis script or database operation that checks and increments in o
 ### Q35. How do you avoid overengineering duplication prevention?
 
 **Answer:** Start with the narrowest invariant. Use a unique constraint for simple uniqueness, atomic SQL for one-row counters, optimistic versioning for rare conflicts, and a full idempotency record only when retries can repeat a meaningful side effect. Add queues, distributed locks, or sagas only when requirements demand them.
+
+### Q36. How do you make a checkout `POST` safe after a network failure?
+
+**Answer:** The client generates one UUID for one checkout operation and sends it as `Idempotency-Key`. Every retry of that checkout reuses the same key. A separate checkout starts with a new key. The server canonicalizes and hashes the complete request body, stores the scoped key and hash under a database unique constraint, and replays the stored result instead of charging or creating another order.
+
+### Q37. What should happen when the same idempotency key is reused with a different body?
+
+**Answer:** Return `409 Conflict`. The server must not process the changed body under an existing key. Store a canonical request hash with the key, compare it on every retry, and reject mismatches. Scope the key by tenant, user, and operation so unrelated endpoints cannot collide.
+
+### Q38. Should Redis store idempotency keys?
+
+**Answer:** Redis can cache completed results or absorb repeated status checks, but it should not be the source of truth. Eviction, expiration, restart, or failover can remove a key while its payment or order already exists. Use a durable database record, unique constraint, and transaction for correctness; use Redis only as an optimization.
+
+### Q39. Does one database transaction make checkout and payment exactly once?
+
+**Answer:** No. A database transaction can atomically claim the request and persist local order state, but it cannot roll back an external payment provider call. Use a provider-side idempotency key, explicit `pending` and `succeeded` statuses, timeout reconciliation, and provider-status lookup before retrying uncertain payments.
+
+### Q40. Why do checkout, order, shipment, and refund operations need separate idempotency keys?
+
+**Answer:** Each key represents one logical operation. A checkout retry must replay checkout, while a later shipment or refund is a new operation with a different business effect. Use separate scoped keys so retries do not accidentally suppress legitimate follow-up actions or repeat money movement.

@@ -169,11 +169,11 @@ When a user pastes or types a address into the browser's address bar, the browse
 
 ---
 
-## 5. Interview Masterclass: High-Impact Q&As
+## Interview Questions and Answers
 
 ### Q1: What is the architectural difference between a URI, a URL, and a URN? Give concrete examples.
 
-- **Answer:**
+* **Answer:**
     - **URI (Uniform Resource Identifier):** The broad identifier category. Example: `mailto:ada@example.com` identifies a mailbox but does not locate a web resource.
     - **URL (Uniform Resource Locator):** A URI carrying location and access information. Example: `https://example.com/books/design-patterns.pdf` tells a client to use HTTPS, contact `example.com`, and request that path.
     - **URN (Uniform Resource Name):** A URI carrying a persistent name in a namespace, independent of network location. Example: `urn:isbn:9780132350884` identifies a book even if its copies move between servers.
@@ -181,19 +181,19 @@ When a user pastes or types a address into the browser's address bar, the browse
 
 ### Q2: Why is the fragment identifier (`#`) never transmitted to the server in HTTP requests, and how do Single Page Applications (SPAs) leverage this behavior?
 
-- **Answer:**
+* **Answer:**
     - **The Reason:** By standard specification (RFC 3986), the fragment identifier (`#`) is designated strictly as a client-side layout anchor to point to a specific section within the retrieved document. Browsers are required to strip the `#` and all subsequent characters from the URL _before_ compiling and sending the HTTP request over the network socket.
     - **SPA Hash Routing:** Single Page Applications (like early React or Angular routers) leveraged this behavior to implement **Hash Routing** (e.g., `http://myapp.com/#/dashboard`). Because changing the hash fragment triggers the browser's `hashchange` event but does **not** send a new request to the server, JavaScript can intercept the change, dynamically mount the `/dashboard` UI component, and update the URL bar without triggering a slow, page-clearing browser refresh.
 
 ### Q3: What is URL-Encoding (Percent-Encoding), and why is it critical when transmitting raw parameters in query strings?
 
-- **Answer:**
+* **Answer:**
     - **The Reason:** URLs are strictly limited to a safe subset of the US-ASCII character set. Any characters outside this set (non-ASCII characters like UTF-8 Chinese characters or emojis) or **Reserved Characters** that possess functional structural meanings as delimiters in URLs (such as `?`, `&`, `=`, `/`, `#`) must be encoded if they are being transmitted as raw payload data.
     - **The Risk:** If a client attempts to pass a search term containing raw delimiters, such as querying a name: `?name=Smith&Jones`, the browser's URL parser will misinterpret the `&` as a delimiter separating two distinct query variables (`name=Smith` and a new variable `Jones`), corrupting the parameter payload. To prevent this, the browser must encode the reserved character: `?name=Smith%26Jones` (converting `&` to its hex byte equivalent `%26`), ensuring the backend parser reads the value as a single, unified string.
 
 ### Q4: Explain Punycode, and why it is necessary during the browser's URL parsing phase.
 
-- **Answer:**
+* **Answer:**
     - **The Role:** The global Domain Name System (DNS) is a legacy infrastructure designed to only support standard, un-accented ASCII characters (`a-z`, `0-9`, `-`). It cannot parse Unicode characters (such as Cyrillic, Chinese, or accented vowels like `ö` or `á`).
     - **The Punycode Solution:** **Punycode** is a standardized translation algorithm (RFC 3492) that converts Internationalized Domain Names (IDNs) containing non-ASCII Unicode characters into an ASCII-Compatible Encoding (ACE) string, prefixed with `xn--`.
     - _Example:_ If a user loads `https://bücher.de`, the browser's URL parser instantly translates the Unicode domain to its Punycode ASCII equivalent: `https://xn--bcher-kva.de` before querying the local DNS client resolver, ensuring legacy internet routing servers can resolve the domain without crashing.
