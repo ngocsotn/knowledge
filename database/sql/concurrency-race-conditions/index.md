@@ -806,3 +806,54 @@ Failure: lock wait, deadlock, connection-pool exhaustion.
   1. **Clock Drift Vulnerability**: Redlock assumes all Redis servers increment time at identical rates. If one Redis node's system clock leaps forward (e.g., due to an NTP sync update), its lease lock will expire prematurely. A second client can then acquire the lock while the first client still believes it owns it, violating mutual exclusion.
   2. **Process Pauses (GC/Virtualization)**: If Client A acquires the Redlock, but then undergoes a long stop-the-world garbage collection pause (or hypervisor VM pause) that exceeds the lock's TTL, the Redis nodes will release the lock. Client B can then safely acquire the lock. When Client A wakes up, it continues its write to shared storage, corrupting the state.
   3. **The Solution**: Distributed consensus systems (like ZooKeeper or Etcd) or databases (like PostgreSQL) should utilize **Fencing Tokens** (monotonically increasing epoch counters). Every lock acquisition returns a fencing token. The storage engine enforces that any incoming write carrying a token lower than the latest committed token is rejected, guaranteeing safety regardless of clock drift or client process pauses.
+
+### Q6: An order receives `refund_issued` first and `order_cancelled` second. Both events have timestamp `10:14:02`, written by different services. How do you know which happened first?
+- **Answer**: You do not know from these facts. Arrival order is not occurrence order, and equal wall-clock timestamps cannot establish ordering across services. Clock skew, timestamp precision, network delay, retries, and broker scheduling can reorder events.
+
+  ```text
+  arrived 1st: refund_issued
+  arrived 2nd: order_cancelled
+  both service timestamps: 10:14:02
+  ```
+
+  Require an explicit ordering signal:
+
+  - **Per-order sequence:** One authoritative order stream assigns `sequence_no = 41`, `42`. Compare sequence numbers, not arrival time.
+  - **Event identity and causation:** Store `event_id`, `correlation_id`, `causation_id`, producer, and producer commit time. Useful for tracing, but timestamps alone still do not prove order.
+  - **Logical clocks:** Lamport or vector clocks represent causal order when services participate correctly. Concurrent events remain incomparable.
+  - **Durable broker position:** A partition offset proves broker append order, not necessarily business occurrence order.
+
+  Example event table:
+
+  ```sql
+  CREATE TABLE order_events (
+      event_id       uuid PRIMARY KEY,
+      order_id       bigint NOT NULL,
+      event_type     text NOT NULL,
+      sequence_no    bigint,
+      occurred_at    timestamptz,
+      received_at    timestamptz NOT NULL DEFAULT now(),
+      causation_id   uuid,
+      payload        jsonb NOT NULL,
+      UNIQUE (order_id, sequence_no)
+  );
+  ```
+
+  If `sequence_no` is missing, mark order history as **ordering_unknown**. Do not infer `refund_issued` happened first merely because it arrived first. Reconcile against the payment provider and apply a deterministic business policy, such as:
+
+  ```sql
+  INSERT INTO order_events (
+      event_id, order_id, event_type, sequence_no, occurred_at, payload
+  )
+  VALUES (
+      '00000000-0000-0000-0000-000000000001',
+      1001,
+      'refund_issued',
+      NULL,
+      '2026-09-18 10:14:02+07',
+      '{"amount": 49.99}'
+  )
+  ON CONFLICT (event_id) DO NOTHING;
+  ```
+
+  Make handlers idempotent. Store both events, deduplicate by `event_id`, and derive order state through a guarded state machine. For money, never let event arrival order silently decide totals; use provider transaction IDs, idempotency keys, and a reconciliation record for ambiguous histories.
