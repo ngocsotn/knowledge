@@ -266,3 +266,12 @@ Following the 101 status, the HTTP parser is fully deactivated. Both parties rea
   * If client-to-server frames were unmasked, a malicious browser script could send custom TCP bytes inside a WebSocket frame that mimic standard plain-text HTTP syntax (e.g., `GET /index.html`).
   * A transparent, legacy proxy might intercept this raw TCP byte flow, mistake it for a fresh HTTP request, fetch the resource, and cache a compromised or corrupted version, **poisoning the cache** for all other users behind that proxy.
   * Masking (XOR-encrypting the payload with a random 4-byte key) randomizes the bytes on the wire, making them appear as meaningless binary garbage to intermediate proxies, thereby preventing cache poisoning.
+
+### Q5: Why does HTTP/3 use UDP when TCP already provides reliability, ordering, and congestion control?
+* **Answer:** HTTP/3 does not use UDP because UDP provides those features. UDP provides only a minimal datagram layer. **QUIC implements reliability, acknowledgements, retransmission, flow control, congestion control, encryption, and stream management above UDP.**
+  * **Avoiding TCP's transport-level Head-of-Line blocking:** TCP exposes one strictly ordered byte stream. When one packet is lost, TCP must wait for retransmission before delivering later bytes, even when those bytes belong to unrelated HTTP/3 streams. QUIC provides independent streams, so loss on one stream does not block other streams.
+  * **Faster protocol evolution:** TCP behavior is implemented inside operating-system kernels and constrained by middleboxes that may reject unfamiliar TCP extensions. QUIC runs mostly in user space over ordinary UDP, letting browsers and servers update transport behavior without waiting for kernel or network-device upgrades.
+  * **One combined handshake:** QUIC integrates TLS 1.3 with transport setup, avoiding a separate TCP handshake followed by a TLS handshake. It also supports `0-RTT` session resumption.
+  * **Connection migration:** TCP identifies a connection by its IP/port 4-tuple. QUIC uses a Connection ID, allowing a connection to survive changes such as switching from Wi-Fi to cellular data.
+
+  QUIC therefore keeps TCP's important guarantees where needed: delivery is reliable and ordered **within each QUIC stream**, and congestion control protects the network. It removes TCP's single-stream limitations while using UDP as a widely deployable transport substrate.
