@@ -23,6 +23,16 @@
 - How to solve conflict with a co-worker in ideas? in discuss about tech-stacks? in discuss about git flow? in discuss about who will OT? in discuss about the in-balance of task's point?...etc
 - When you see a co-worker have a violation of company regulations or engineer's professional ethics? What will you do?
 - Why did you choose this career path? do you have a plan to continue to growth this career path?
+- Tell me about a difficult technical problem you had to solve?
+- Tell me about a time when you disagreed with a technical decision?
+- Tell me about a time when something went wrong in the project?
+- How do you decide between two different technical solutions?
+- Tell me about a time you optimized something?
+- How do you approach an unfamiliar problem?
+- Tell me about a decision you made with incomplete information?
+- Tell me about a time you had to balance business requirements and technical quality?
+- How do you know that your solution is actually correct?
+- What would you do differently if you could redesign one of your previous projects?
 
 ## About new company
 
