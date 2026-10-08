@@ -14,7 +14,23 @@ This is a markdown project for storing knowledge, mainly focus for interview in 
 
 - `ai-driven` contain knowledge about AI Agent, AI driven related content in this AI industry. Not related to algorithm training AI or content related to training AI. Only about usage AI that help improve performance, the usage of AI in application like chat agent, auto flow...etc
 - `auth` contain knowledge about Authentication, Authorization and related content of it.
--
+- `backend` contain knowledge about backend development, API design, concurrency and race conditions, diagnostics, file handling, implementation challenges, and backend security.
+- `browsers` contain knowledge about browser internals, layout and rendering engines, storage mechanisms (cookies, web storage, cache), and content compression.
+- `caching` contain knowledge about caching fundamentals, local vs. distributed caching strategies, and Redis data structures and patterns.
+- `culture-fit` contain knowledge about behavioral and culture-fit interview questions, professional mindset, communication, and working alongside AI.
+- `database` contain knowledge about relational databases (SQL), non-relational databases (NoSQL), vector databases, indexing, query optimization, transactions, and scaling.
+- `design` contain knowledge about multi-tier system and software design, spanning infrastructure/topology (Lv1), software architecture (Lv2), design patterns (Lv3), language-specific idioms (Lv4), and interview scenarios.
+- `devops-cloud` contain knowledge about DevOps and cloud computing, including CI/CD pipelines, Docker, Kubernetes, virtualization, cloud architecture, and security.
+- `dsa` contain knowledge about data structures and algorithms, time/space complexity, sorting, searching, and algorithm design paradigms.
+- `frontend` contain knowledge about frontend engineering, modern frameworks (React, Next.js, Angular), DOM/V-DOM, rendering patterns, state management, performance, and frontend architecture.
+- `git` contain knowledge about Git version control, internal architecture, branching workflows, and merge/rebase mechanics.
+- `interview-scenarios` contain practical system design and technical interview scenarios, case studies, and structured problem-solving walkthroughs.
+- `network` contain knowledge about computer networks, network protocols (HTTP, TCP/UDP, DNS, WebSocket, SSH, etc.), and network security.
+- `observation` contain knowledge about system observability and telemetry, focusing on logging, metrics, and distributed tracing.
+- `operating-system` contain knowledge about operating systems, process/thread management, CPU scheduling, memory, and processor architectures.
+- `project-methodologies` contain knowledge about software delivery and project management frameworks, including Agile, Scrum, Kanban, and Waterfall.
+- `specific-language` contain in-depth knowledge of specific programming languages, runtime environments, and syntax paradigms (e.g., JavaScript, TypeScript, Node.js).
+- `test` contain knowledge about software quality assurance, testing pyramid (unit, integration, E2E), and methodologies like TDD and BDD.
 
 ## Markdown convention
 
