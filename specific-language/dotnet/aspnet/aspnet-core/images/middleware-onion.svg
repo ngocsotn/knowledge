@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" fill="#212529" viewBox="0 0 900 540" width="900" height="540" role="img" aria-labelledby="t d">
+  <title id="t">The ASP.NET Core middleware pipeline as layers</title>
+  <desc id="d">Six middleware layers wrap the endpoint: exception handler, HTTPS redirection, static files, routing, authentication and authorization. The request passes in through every layer and the response passes back out.</desc>
+  <style>
+    text { font-family: "Segoe UI", Helvetica, Arial, sans-serif; }
+    .title { font-size: 22px; font-weight: 700; }
+    .sub { font-size: 13px; fill: #495057; }
+    .layer { font-size: 13.5px; font-weight: 700; }
+    .note { font-size: 12px; fill: #495057; }
+    .core { font-size: 14px; font-weight: 700; fill: #FFFFFF; }
+    .flow { font-size: 12px; font-weight: 700; }
+  </style>
+  <defs>
+    <marker id="in" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1C7ED6"/>
+    </marker>
+    <marker id="out" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2F9E44"/>
+    </marker>
+  </defs>
+
+  <rect x="1" y="1" width="898" height="538" rx="16" fill="#FFFFFF" stroke="#DEE2E6"/>
+  <text x="24" y="40" class="title">Middleware: layers around your endpoint</text>
+  <text x="24" y="62" class="sub">The first app.Use...() is the outermost layer. Each layer can act on the way in, on the way out, or stop early.</text>
+
+  <!-- layers: x = 40 + 50i, y = 84 + 30i, w = 820 - 100i, h = 410 - 60i -->
+  <rect x="40" y="84" width="820" height="410" rx="22" fill="#FFF5F5" stroke="#FFA8A8"/>
+  <text x="56" y="105" class="layer">1  Exception handler</text><text x="210" y="105" class="note">catches errors thrown by every layer inside</text>
+
+  <rect x="90" y="114" width="720" height="350" rx="20" fill="#FFF9DB" stroke="#FFD43B"/>
+  <text x="106" y="135" class="layer">2  HTTPS redirection</text><text x="262" y="135" class="note">http → https</text>
+
+  <rect x="140" y="144" width="620" height="290" rx="18" fill="#EBFBEE" stroke="#8CE99A"/>
+  <text x="156" y="165" class="layer">3  Static files</text><text x="262" y="165" class="note">serves /css, /js, /img and stops here</text>
+
+  <rect x="190" y="174" width="520" height="230" rx="16" fill="#E7F5FF" stroke="#74C0FC"/>
+  <text x="206" y="195" class="layer">4  Routing</text><text x="290" y="195" class="note">picks the endpoint, doesn't run it yet</text>
+
+  <rect x="240" y="204" width="420" height="170" rx="14" fill="#F3F0FF" stroke="#B197FC"/>
+  <text x="256" y="225" class="layer">5  Authentication</text><text x="386" y="225" class="note">who are you?</text>
+
+  <rect x="290" y="234" width="320" height="110" rx="12" fill="#E5DBFF" stroke="#9775FA"/>
+  <text x="306" y="255" class="layer">6  Authorization</text><text x="428" y="255" class="note">allowed? else 401/403</text>
+
+  <rect x="340" y="264" width="220" height="50" rx="10" fill="#512BD4"/>
+  <text x="450" y="285" class="core" text-anchor="middle">Endpoint</text>
+  <text x="450" y="303" class="note" text-anchor="middle" style="fill:#E5DBFF">controller / Minimal API</text>
+
+  <!-- flow arrows -->
+  <line x1="12" y1="280" x2="336" y2="280" stroke="#1C7ED6" stroke-width="2.5" marker-end="url(#in)"/>
+  <text x="50" y="273" class="flow" style="fill:#1C7ED6">request in</text>
+  <line x1="564" y1="298" x2="890" y2="298" stroke="#2F9E44" stroke-width="2.5" marker-end="url(#out)"/>
+  <text x="770" y="318" class="flow" style="fill:#2F9E44">response out</text>
+
+  <text x="24" y="522" class="sub">Order = registration order in Program.cs. Put auth after routing, and the exception handler first so it can see every error.</text>
+</svg>

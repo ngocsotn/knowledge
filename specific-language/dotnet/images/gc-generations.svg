@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" fill="#212529" viewBox="0 0 900 420" width="900" height="420" role="img" aria-labelledby="t d">
+  <title id="t">How the .NET garbage collector uses generations</title>
+  <desc id="d">New objects start in Gen 0. Most die there. Survivors move to Gen 1 and then Gen 2. Objects of 85,000 bytes or more go to the Large Object Heap.</desc>
+  <style>
+    text { font-family: "Segoe UI", Helvetica, Arial, sans-serif; }
+    .title { font-size: 22px; font-weight: 700; }
+    .sub { font-size: 13px; fill: #495057; }
+    .h { font-size: 16px; font-weight: 700; }
+    .note { font-size: 12px; fill: #495057; }
+    .tag { font-size: 12px; font-weight: 600; }
+    .alive { fill: #512BD4; }
+    .dead { fill: #FFFFFF; stroke: #ADB5BD; stroke-width: 1.5; stroke-dasharray: 3 2; }
+  </style>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#495057"/>
+    </marker>
+  </defs>
+
+  <rect x="1" y="1" width="898" height="418" rx="16" fill="#FFFFFF" stroke="#DEE2E6"/>
+  <text x="24" y="40" class="title">Garbage collection: most objects die young</text>
+  <text x="24" y="62" class="sub">The GC checks the young area often (cheap) and the old area rarely (expensive). Survivors get promoted.</text>
+
+  <!-- Gen 0 -->
+  <rect x="40" y="90" width="230" height="160" rx="12" fill="#F3F0FF" stroke="#9775FA"/>
+  <text x="56" y="116" class="h">Gen 0</text>
+  <text x="112" y="116" class="note">brand new objects</text>
+  <g>
+    <circle cx="70" cy="150" r="10" class="dead"/><circle cx="102" cy="150" r="10" class="alive"/><circle cx="134" cy="150" r="10" class="dead"/>
+    <circle cx="166" cy="150" r="10" class="dead"/><circle cx="198" cy="150" r="10" class="dead"/><circle cx="230" cy="150" r="10" class="dead"/>
+    <circle cx="70" cy="182" r="10" class="dead"/><circle cx="102" cy="182" r="10" class="dead"/><circle cx="134" cy="182" r="10" class="dead"/>
+    <circle cx="166" cy="182" r="10" class="dead"/><circle cx="198" cy="182" r="10" class="alive"/><circle cx="230" cy="182" r="10" class="dead"/>
+    <circle cx="70" cy="214" r="10" class="dead"/><circle cx="102" cy="214" r="10" class="dead"/><circle cx="134" cy="214" r="10" class="alive"/>
+    <circle cx="166" cy="214" r="10" class="dead"/><circle cx="198" cy="214" r="10" class="dead"/><circle cx="230" cy="214" r="10" class="dead"/>
+  </g>
+  <text x="155" y="275" class="tag" text-anchor="middle" fill="#2F9E44">Collected very often</text>
+  <text x="155" y="292" class="note" text-anchor="middle">cheap: small area to scan</text>
+
+  <!-- arrow 0 -> 1 -->
+  <line x1="275" y1="170" x2="325" y2="170" stroke="#495057" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="300" y="160" class="note" text-anchor="middle">survive</text>
+
+  <!-- Gen 1 -->
+  <rect x="330" y="90" width="200" height="160" rx="12" fill="#E7F5FF" stroke="#4DABF7"/>
+  <text x="346" y="116" class="h">Gen 1</text>
+  <text x="402" y="116" class="note">buffer zone</text>
+  <g>
+    <circle cx="362" cy="166" r="10" class="dead"/><circle cx="394" cy="166" r="10" class="alive"/><circle cx="426" cy="166" r="10" class="dead"/>
+    <circle cx="458" cy="166" r="10" class="dead"/><circle cx="490" cy="166" r="10" class="dead"/>
+    <circle cx="362" cy="198" r="10" class="dead"/><circle cx="394" cy="198" r="10" class="dead"/><circle cx="426" cy="198" r="10" class="dead"/>
+    <circle cx="458" cy="198" r="10" class="alive"/><circle cx="490" cy="198" r="10" class="dead"/>
+  </g>
+  <text x="430" y="275" class="tag" text-anchor="middle" fill="#1C7ED6">Collected sometimes</text>
+  <text x="430" y="292" class="note" text-anchor="middle">catches medium-lived objects</text>
+
+  <!-- arrow 1 -> 2 -->
+  <line x1="535" y1="170" x2="585" y2="170" stroke="#495057" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="560" y="160" class="note" text-anchor="middle">survive</text>
+
+  <!-- Gen 2 -->
+  <rect x="590" y="90" width="270" height="160" rx="12" fill="#FFF4E6" stroke="#FFA94D"/>
+  <text x="606" y="116" class="h">Gen 2</text>
+  <text x="662" y="116" class="note">long-lived: caches, singletons</text>
+  <g>
+    <circle cx="622" cy="150" r="10" class="alive"/><circle cx="654" cy="150" r="10" class="alive"/><circle cx="686" cy="150" r="10" class="alive"/>
+    <circle cx="718" cy="150" r="10" class="alive"/><circle cx="750" cy="150" r="10" class="alive"/><circle cx="782" cy="150" r="10" class="alive"/><circle cx="814" cy="150" r="10" class="alive"/>
+    <circle cx="622" cy="182" r="10" class="alive"/><circle cx="654" cy="182" r="10" class="alive"/><circle cx="686" cy="182" r="10" class="dead"/>
+    <circle cx="718" cy="182" r="10" class="alive"/><circle cx="750" cy="182" r="10" class="alive"/><circle cx="782" cy="182" r="10" class="alive"/><circle cx="814" cy="182" r="10" class="alive"/>
+    <circle cx="622" cy="214" r="10" class="alive"/><circle cx="654" cy="214" r="10" class="alive"/><circle cx="686" cy="214" r="10" class="alive"/>
+    <circle cx="718" cy="214" r="10" class="alive"/><circle cx="750" cy="214" r="10" class="dead"/><circle cx="782" cy="214" r="10" class="alive"/><circle cx="814" cy="214" r="10" class="alive"/>
+  </g>
+  <text x="725" y="275" class="tag" text-anchor="middle" fill="#E8590C">Collected rarely</text>
+  <text x="725" y="292" class="note" text-anchor="middle">expensive "full GC": scans the whole heap</text>
+
+  <!-- LOH -->
+  <rect x="40" y="318" width="820" height="62" rx="12" fill="#FFF5F5" stroke="#FF8787"/>
+  <text x="58" y="344" class="h">Large Object Heap (LOH)</text>
+  <text x="270" y="344" class="note">Objects of 85,000 bytes or more go straight here. Cleaned only with Gen 2, not compacted by default.</text>
+  <text x="58" y="366" class="note">Tip: reuse big buffers with ArrayPool&lt;T&gt; or stream data, so you don't trigger full GCs and fragmentation.</text>
+
+  <!-- legend -->
+  <circle cx="560" cy="400" r="7" class="alive"/>
+  <text x="572" y="404" class="note">still in use (alive)</text>
+  <circle cx="700" cy="400" r="7" class="dead"/>
+  <text x="712" y="404" class="note">unreachable (freed)</text>
+</svg>

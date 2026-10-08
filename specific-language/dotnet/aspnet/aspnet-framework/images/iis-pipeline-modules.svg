@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" fill="#212529" viewBox="0 0 960 440" width="960" height="440" role="img" aria-labelledby="t d">
+  <title id="t">The classic ASP.NET pipeline and the modules that hook into it</title>
+  <desc id="d">Request events run in a fixed order from BeginRequest to EndRequest. Built-in modules such as Forms authentication, output cache and session state attach to specific events. One handler produces the response in the middle.</desc>
+  <style>
+    text { font-family: "Segoe UI", Helvetica, Arial, sans-serif; }
+    .title { font-size: 22px; font-weight: 700; }
+    .sub { font-size: 13px; fill: #495057; }
+    .ev { font-size: 12px; font-weight: 700; fill: #1864AB; }
+    .mod { font-size: 11px; font-weight: 600; }
+    .hand { font-size: 14px; font-weight: 700; fill: #FFFFFF; }
+    .hand-sub { font-size: 11.5px; fill: #E5DBFF; }
+    .lbl { font-size: 12px; fill: #868E96; font-weight: 600; }
+  </style>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#74C0FC"/>
+    </marker>
+  </defs>
+
+  <rect x="1" y="1" width="958" height="438" rx="16" fill="#FFFFFF" stroke="#DEE2E6"/>
+  <text x="24" y="40" class="title">Classic ASP.NET: fixed events, modules hook in</text>
+  <text x="24" y="62" class="sub">Every request walks this path in order. Modules subscribe to events. Exactly one handler writes the response.</text>
+
+  <text x="20" y="96" class="lbl">REQUEST IN →</text>
+
+  <!-- row 1 events: x = 20 + i*156, width 140 -->
+  <g>
+    <rect x="20" y="106" width="140" height="40" rx="8" fill="#E7F5FF" stroke="#74C0FC"/><text x="90" y="131" class="ev" text-anchor="middle">BeginRequest</text>
+    <rect x="176" y="106" width="140" height="40" rx="8" fill="#E7F5FF" stroke="#74C0FC"/><text x="246" y="131" class="ev" text-anchor="middle">AuthenticateRequest</text>
+    <rect x="332" y="106" width="140" height="40" rx="8" fill="#E7F5FF" stroke="#74C0FC"/><text x="402" y="131" class="ev" text-anchor="middle">AuthorizeRequest</text>
+    <rect x="488" y="106" width="140" height="40" rx="8" fill="#E7F5FF" stroke="#74C0FC"/><text x="558" y="131" class="ev" text-anchor="middle">ResolveRequestCache</text>
+    <rect x="644" y="106" width="140" height="40" rx="8" fill="#E7F5FF" stroke="#74C0FC"/><text x="714" y="131" class="ev" text-anchor="middle">MapRequestHandler</text>
+    <rect x="800" y="106" width="140" height="40" rx="8" fill="#E7F5FF" stroke="#74C0FC"/><text x="870" y="131" class="ev" text-anchor="middle">AcquireRequestState</text>
+  </g>
+  <g stroke="#74C0FC" stroke-width="2" marker-end="url(#arr)">
+    <line x1="160" y1="126" x2="174" y2="126"/><line x1="316" y1="126" x2="330" y2="126"/>
+    <line x1="472" y1="126" x2="486" y2="126"/><line x1="628" y1="126" x2="642" y2="126"/>
+    <line x1="784" y1="126" x2="798" y2="126"/>
+  </g>
+
+  <!-- row 1 modules -->
+  <g>
+    <rect x="20" y="154" width="140" height="24" rx="12" fill="#F1F3F5"/><text x="90" y="170" class="mod" text-anchor="middle" fill="#495057">your IHttpModule</text>
+    <rect x="176" y="154" width="140" height="24" rx="12" fill="#D0EBFF"/><text x="246" y="170" class="mod" text-anchor="middle" fill="#1864AB">Forms / Windows auth</text>
+    <rect x="332" y="154" width="140" height="24" rx="12" fill="#D0EBFF"/><text x="402" y="170" class="mod" text-anchor="middle" fill="#1864AB">URL authorization</text>
+    <rect x="488" y="154" width="140" height="24" rx="12" fill="#C3FAE8"/><text x="558" y="170" class="mod" text-anchor="middle" fill="#087F5B">OutputCache: hit? stop</text>
+    <rect x="644" y="154" width="140" height="24" rx="12" fill="#F1F3F5"/><text x="714" y="170" class="mod" text-anchor="middle" fill="#495057">picks MVC / page / API</text>
+    <rect x="800" y="154" width="140" height="24" rx="12" fill="#FFE8CC"/><text x="870" y="170" class="mod" text-anchor="middle" fill="#D9480F">Session: LOCK taken</text>
+  </g>
+
+  <!-- turn down -->
+  <path d="M870,180 L870,214" stroke="#74C0FC" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+
+  <!-- row 2 (right to left) -->
+  <rect x="720" y="218" width="220" height="64" rx="10" fill="#512BD4"/>
+  <text x="830" y="243" class="hand" text-anchor="middle">HANDLER runs</text>
+  <text x="830" y="262" class="hand-sub" text-anchor="middle">MvcHandler, Web API, .aspx page:</text>
+  <text x="830" y="276" class="hand-sub" text-anchor="middle">your controller code is here</text>
+
+  <g>
+    <rect x="564" y="230" width="140" height="40" rx="8" fill="#E7F5FF" stroke="#74C0FC"/><text x="634" y="255" class="ev" text-anchor="middle">ReleaseRequestState</text>
+    <rect x="408" y="230" width="140" height="40" rx="8" fill="#E7F5FF" stroke="#74C0FC"/><text x="478" y="255" class="ev" text-anchor="middle">UpdateRequestCache</text>
+    <rect x="252" y="230" width="140" height="40" rx="8" fill="#E7F5FF" stroke="#74C0FC"/><text x="322" y="255" class="ev" text-anchor="middle">LogRequest</text>
+    <rect x="96" y="230" width="140" height="40" rx="8" fill="#E7F5FF" stroke="#74C0FC"/><text x="166" y="255" class="ev" text-anchor="middle">EndRequest</text>
+  </g>
+  <g stroke="#74C0FC" stroke-width="2" marker-end="url(#arr)">
+    <line x1="720" y1="250" x2="706" y2="250"/><line x1="564" y1="250" x2="550" y2="250"/>
+    <line x1="408" y1="250" x2="394" y2="250"/><line x1="252" y1="250" x2="238" y2="250"/>
+    <line x1="96" y1="250" x2="40" y2="250"/>
+  </g>
+  <text x="20" y="222" class="lbl">← RESPONSE OUT</text>
+
+  <!-- row 2 modules -->
+  <g>
+    <rect x="564" y="290" width="140" height="24" rx="12" fill="#FFE8CC"/><text x="634" y="306" class="mod" text-anchor="middle" fill="#D9480F">Session: lock released</text>
+    <rect x="408" y="290" width="140" height="24" rx="12" fill="#C3FAE8"/><text x="478" y="306" class="mod" text-anchor="middle" fill="#087F5B">OutputCache: store</text>
+    <rect x="252" y="290" width="140" height="24" rx="12" fill="#F1F3F5"/><text x="322" y="306" class="mod" text-anchor="middle" fill="#495057">IIS logging</text>
+    <rect x="96" y="290" width="140" height="24" rx="12" fill="#F1F3F5"/><text x="166" y="306" class="mod" text-anchor="middle" fill="#495057">your IHttpModule</text>
+  </g>
+
+  <!-- takeaway -->
+  <rect x="20" y="340" width="920" height="80" rx="12" fill="#F8F9FA" stroke="#DEE2E6"/>
+  <text x="38" y="366" class="ev" style="fill:#212529">Why it matters</text>
+  <text x="38" y="388" class="sub">• The order is fixed by the framework. In ASP.NET Core you decide the order yourself with middleware.</text>
+  <text x="38" y="408" class="sub">• The session lock is held from AcquireRequestState to ReleaseRequestState: the whole time your code runs.</text>
+</svg>

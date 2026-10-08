@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" fill="#212529" viewBox="0 0 920 600" width="920" height="600" role="img" aria-labelledby="t d">
+  <title id="t">Classic ASP.NET 4.x vs ASP.NET Core at a glance</title>
+  <desc id="d">A side-by-side comparison card of nine topics: where it runs, web server, pipeline, MVC and API, dependency injection, configuration, async, session and status.</desc>
+  <style>
+    text { font-family: "Segoe UI", Helvetica, Arial, sans-serif; }
+    .title { font-size: 22px; font-weight: 700; }
+    .sub { font-size: 13px; fill: #495057; }
+    .col { font-size: 16px; font-weight: 700; fill: #FFFFFF; }
+    .colsub { font-size: 12px; fill: #E7F5FF; }
+    .topic { font-size: 13.5px; font-weight: 700; fill: #343A40; }
+    .cell { font-size: 13px; fill: #343A40; }
+    .bad { font-size: 13px; font-weight: 700; fill: #E8590C; }
+    .good { font-size: 13px; font-weight: 700; fill: #2F9E44; }
+  </style>
+
+  <rect x="1" y="1" width="918" height="598" rx="16" fill="#FFFFFF" stroke="#DEE2E6"/>
+  <text x="24" y="40" class="title">Classic ASP.NET vs ASP.NET Core</text>
+  <text x="24" y="62" class="sub">Same ideas (MVC, Razor, routing, filters), very different foundation.</text>
+
+  <!-- column headers -->
+  <rect x="230" y="80" width="330" height="52" rx="10" fill="#1C7ED6"/>
+  <text x="248" y="104" class="col">ASP.NET 4.x</text>
+  <text x="248" y="122" class="colsub">System.Web on .NET Framework (2002 to 2019)</text>
+  <rect x="570" y="80" width="330" height="52" rx="10" fill="#512BD4"/>
+  <text x="588" y="104" class="col">ASP.NET Core</text>
+  <text x="588" y="122" class="colsub" fill="#E5DBFF">modern .NET (2016 to today)</text>
+
+  <!-- zebra rows -->
+  <g fill="#F8F9FA">
+    <rect x="20" y="142" width="880" height="48" rx="6"/>
+    <rect x="20" y="238" width="880" height="48" rx="6"/>
+    <rect x="20" y="334" width="880" height="48" rx="6"/>
+    <rect x="20" y="430" width="880" height="48" rx="6"/>
+    <rect x="20" y="526" width="880" height="48" rx="6"/>
+  </g>
+
+  <!-- rows: each 48px, text baseline at row top + 29 -->
+  <text x="36" y="171" class="topic">Runs on</text>
+  <text x="248" y="171" class="cell"><tspan class="bad">✗ </tspan>Windows + IIS only</text>
+  <text x="588" y="171" class="cell"><tspan class="good">✓ </tspan>Windows, Linux, macOS, containers</text>
+
+  <text x="36" y="219" class="topic">Web server</text>
+  <text x="248" y="219" class="cell">IIS (System.Web in the IIS pipeline)</text>
+  <text x="588" y="219" class="cell">Kestrel (IIS / Nginx optional in front)</text>
+
+  <text x="36" y="267" class="topic">Request pipeline</text>
+  <text x="248" y="267" class="cell">Fixed events + HttpModules</text>
+  <text x="588" y="267" class="cell">Middleware you order in Program.cs</text>
+
+  <text x="36" y="315" class="topic">MVC and Web API</text>
+  <text x="248" y="315" class="cell"><tspan class="bad">✗ </tspan>Two separate frameworks</text>
+  <text x="588" y="315" class="cell"><tspan class="good">✓ </tspan>One unified framework + Minimal APIs</text>
+
+  <text x="36" y="363" class="topic">Dependency injection</text>
+  <text x="248" y="363" class="cell"><tspan class="bad">✗ </tspan>Bring your own (Autofac, Unity...)</text>
+  <text x="588" y="363" class="cell"><tspan class="good">✓ </tspan>Built in, used by the framework</text>
+
+  <text x="36" y="411" class="topic">Configuration</text>
+  <text x="248" y="411" class="cell">web.config XML, edit = app restart</text>
+  <text x="588" y="411" class="cell">JSON + env vars + secrets + options</text>
+
+  <text x="36" y="459" class="topic">Async</text>
+  <text x="248" y="459" class="cell"><tspan class="bad">✗ </tspan>.Result can deadlock (sync context)</text>
+  <text x="588" y="459" class="cell"><tspan class="good">✓ </tspan>No sync context, no deadlock</text>
+
+  <text x="36" y="507" class="topic">Session</text>
+  <text x="248" y="507" class="cell">Locks per user (requests queue up)</text>
+  <text x="588" y="507" class="cell">Opt-in, no lock, distributed cache</text>
+
+  <text x="36" y="555" class="topic">Status</text>
+  <text x="248" y="555" class="cell">Maintenance only (with Windows)</text>
+  <text x="588" y="555" class="cell"><tspan class="good">✓ </tspan>New release every November</text>
+</svg>
