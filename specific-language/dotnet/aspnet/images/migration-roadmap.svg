@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" fill="#212529" viewBox="0 0 960 380" width="960" height="380" role="img" aria-labelledby="t d">
+  <title id="t">Incremental migration roadmap from ASP.NET 4.x to ASP.NET Core</title>
+  <desc id="d">Six steps: inventory, modernize the 4.x app, make libraries portable, put a new ASP.NET Core app with YARP in front, move routes one by one, retire the old app. Traffic moves from the old app to the new app from step 4 onward.</desc>
+  <style>
+    text { font-family: "Segoe UI", Helvetica, Arial, sans-serif; }
+    .title { font-size: 22px; font-weight: 700; }
+    .sub { font-size: 13px; fill: #495057; }
+    .num { font-size: 16px; font-weight: 700; fill: #FFFFFF; }
+    .step { font-size: 13.5px; font-weight: 700; }
+    .desc { font-size: 12px; fill: #495057; }
+    .phase { font-size: 12px; font-weight: 700; letter-spacing: 0.5px; }
+    .bar { font-size: 12px; font-weight: 600; fill: #FFFFFF; }
+  </style>
+  <defs>
+    <linearGradient id="road" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#1C7ED6"/>
+      <stop offset="0.5" stop-color="#7048E8"/>
+      <stop offset="1" stop-color="#512BD4"/>
+    </linearGradient>
+    <linearGradient id="traffic" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#1C7ED6"/>
+      <stop offset="0.48" stop-color="#1C7ED6"/>
+      <stop offset="1" stop-color="#512BD4"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="1" y="1" width="958" height="378" rx="16" fill="#FFFFFF" stroke="#DEE2E6"/>
+  <text x="24" y="40" class="title">Migrating step by step (strangler fig)</text>
+  <text x="24" y="62" class="sub">Every step ships to production. The old app keeps running until nothing is forwarded to it anymore.</text>
+
+  <!-- phases -->
+  <text x="100" y="98" class="phase" fill="#1864AB">PREPARE THE OLD APP</text>
+  <text x="556" y="98" class="phase" fill="#5F3DC4">RUN BOTH SIDE BY SIDE</text>
+  <line x1="480" y1="86" x2="480" y2="300" stroke="#DEE2E6" stroke-dasharray="4 4"/>
+
+  <!-- road -->
+  <rect x="80" y="126" width="800" height="10" rx="5" fill="url(#road)"/>
+
+  <!-- milestones: x = 100 + i*152 -->
+  <g>
+    <circle cx="100" cy="131" r="18" fill="#1C7ED6"/><text x="100" y="137" class="num" text-anchor="middle">1</text>
+    <circle cx="252" cy="131" r="18" fill="#1C7ED6"/><text x="252" y="137" class="num" text-anchor="middle">2</text>
+    <circle cx="404" cy="131" r="18" fill="#3B5BDB"/><text x="404" y="137" class="num" text-anchor="middle">3</text>
+    <circle cx="556" cy="131" r="18" fill="#7048E8"/><text x="556" y="137" class="num" text-anchor="middle">4</text>
+    <circle cx="708" cy="131" r="18" fill="#6741D9"/><text x="708" y="137" class="num" text-anchor="middle">5</text>
+    <circle cx="860" cy="131" r="18" fill="#512BD4"/><text x="860" y="137" class="num" text-anchor="middle">6</text>
+  </g>
+
+  <!-- cards -->
+  <g>
+    <rect x="34" y="166" width="132" height="110" rx="10" fill="#F8F9FA" stroke="#DEE2E6"/>
+    <text x="46" y="190" class="step">Inventory</text>
+    <text x="46" y="212" class="desc">Find System.Web,</text>
+    <text x="46" y="228" class="desc">WCF, Web Forms,</text>
+    <text x="46" y="244" class="desc">session, packages</text>
+
+    <rect x="186" y="166" width="132" height="110" rx="10" fill="#F8F9FA" stroke="#DEE2E6"/>
+    <text x="198" y="190" class="step">Modernize 4.x</text>
+    <text x="198" y="212" class="desc">Move to .NET 4.8,</text>
+    <text x="198" y="228" class="desc">SDK-style projects,</text>
+    <text x="198" y="244" class="desc">PackageReference</text>
+
+    <rect x="338" y="166" width="132" height="110" rx="10" fill="#F8F9FA" stroke="#DEE2E6"/>
+    <text x="350" y="190" class="step">Portable libraries</text>
+    <text x="350" y="212" class="desc">netstandard2.0 or</text>
+    <text x="350" y="228" class="desc">multi-target, hide</text>
+    <text x="350" y="244" class="desc">System.Web usage</text>
+
+    <rect x="490" y="166" width="132" height="110" rx="10" fill="#F3F0FF" stroke="#D0BFFF"/>
+    <text x="502" y="190" class="step">Proxy in front</text>
+    <text x="502" y="212" class="desc">New Core app with</text>
+    <text x="502" y="228" class="desc">YARP forwards all</text>
+    <text x="502" y="244" class="desc">unknown routes</text>
+
+    <rect x="642" y="166" width="132" height="110" rx="10" fill="#F3F0FF" stroke="#D0BFFF"/>
+    <text x="654" y="190" class="step">Route by route</text>
+    <text x="654" y="212" class="desc">Share auth + session,</text>
+    <text x="654" y="228" class="desc">add tests, move one</text>
+    <text x="654" y="244" class="desc">feature at a time</text>
+
+    <rect x="794" y="166" width="132" height="110" rx="10" fill="#F3F0FF" stroke="#D0BFFF"/>
+    <text x="806" y="190" class="step">Retire old app</text>
+    <text x="806" y="212" class="desc">Nothing forwarded,</text>
+    <text x="806" y="228" class="desc">switch hosting,</text>
+    <text x="806" y="244" class="desc">delete the old code</text>
+  </g>
+
+  <!-- traffic bar -->
+  <text x="34" y="318" class="step">Who serves the traffic?</text>
+  <rect x="34" y="330" width="892" height="28" rx="8" fill="url(#traffic)"/>
+  <text x="50" y="349" class="bar">100% old ASP.NET 4.x app</text>
+  <text x="556" y="349" class="bar" text-anchor="middle">old + new together</text>
+  <text x="910" y="349" class="bar" text-anchor="end">100% ASP.NET Core</text>
+</svg>

@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" fill="#212529" viewBox="0 0 920 400" width="920" height="400" role="img" aria-labelledby="t d">
+  <title id="t">The N+1 query problem</title>
+  <desc id="d">Loading 100 orders and then each order's customer one by one costs 101 database round trips. A single query with a join or projection costs one round trip.</desc>
+  <style>
+    text { font-family: "Segoe UI", Helvetica, Arial, sans-serif; }
+    .title { font-size: 22px; font-weight: 700; }
+    .sub { font-size: 13px; fill: #495057; }
+    .h { font-size: 16px; font-weight: 700; }
+    .box { font-size: 14px; font-weight: 700; }
+    .q { font-family: Consolas, "Courier New", monospace; font-size: 11.5px; }
+    .big { font-size: 26px; font-weight: 800; }
+    .code { font-family: Consolas, "Courier New", monospace; font-size: 12px; fill: #343A40; }
+  </style>
+  <defs>
+    <marker id="red" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#E03131"/>
+    </marker>
+    <marker id="green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2F9E44"/>
+    </marker>
+  </defs>
+
+  <rect x="1" y="1" width="918" height="398" rx="16" fill="#FFFFFF" stroke="#DEE2E6"/>
+  <text x="24" y="40" class="title">The N+1 problem: 100 orders, 101 queries</text>
+  <text x="24" y="62" class="sub">Each database round trip costs network time. The number of trips matters more than the size of each query.</text>
+
+  <!-- left panel -->
+  <rect x="24" y="80" width="430" height="300" rx="12" fill="#FFF5F5" stroke="#FFC9C9"/>
+  <text x="44" y="108" class="h" style="fill:#C92A2A">Loop or lazy loading</text>
+  <rect x="44" y="150" width="100" height="90" rx="10" fill="#FFFFFF" stroke="#ADB5BD"/>
+  <text x="94" y="200" class="box" text-anchor="middle">App</text>
+  <g>
+    <path d="M330,146 a45,12 0 0,0 90,0 v86 a45,12 0 0,1 -90,0 z" fill="#E7F5FF" stroke="#4DABF7"/>
+    <ellipse cx="375" cy="146" rx="45" ry="12" fill="#D0EBFF" stroke="#4DABF7"/>
+    <text x="375" y="198" class="box" text-anchor="middle">DB</text>
+  </g>
+  <line x1="146" y1="156" x2="326" y2="156" stroke="#E03131" stroke-width="3" marker-end="url(#red)"/>
+  <text x="152" y="148" class="q" style="fill:#C92A2A">1 × SELECT * FROM Orders</text>
+  <g stroke="#E03131" stroke-width="1.5" marker-end="url(#red)">
+    <line x1="146" y1="174" x2="326" y2="174"/><line x1="146" y1="184" x2="326" y2="184"/>
+    <line x1="146" y1="194" x2="326" y2="194"/><line x1="146" y1="204" x2="326" y2="204"/>
+    <line x1="146" y1="214" x2="326" y2="214"/><line x1="146" y1="224" x2="326" y2="224"/>
+    <line x1="146" y1="234" x2="326" y2="234"/>
+  </g>
+  <text x="152" y="256" class="q" style="fill:#C92A2A">100 × SELECT * FROM Customers</text>
+  <text x="152" y="270" class="q" style="fill:#C92A2A">          WHERE Id = @id</text>
+  <text x="44" y="314" class="big" style="fill:#C92A2A">101 round trips</text>
+  <rect x="44" y="328" width="390" height="38" rx="8" fill="#FFFFFF" stroke="#FFC9C9"/>
+  <text x="56" y="352" class="code">foreach (var o in orders) Print(o.Customer.Name);</text>
+
+  <!-- right panel -->
+  <rect x="466" y="80" width="430" height="300" rx="12" fill="#EBFBEE" stroke="#B2F2BB"/>
+  <text x="486" y="108" class="h" style="fill:#2B8A3E">One query with a JOIN</text>
+  <rect x="486" y="150" width="100" height="90" rx="10" fill="#FFFFFF" stroke="#ADB5BD"/>
+  <text x="536" y="200" class="box" text-anchor="middle">App</text>
+  <g>
+    <path d="M772,146 a45,12 0 0,0 90,0 v86 a45,12 0 0,1 -90,0 z" fill="#E7F5FF" stroke="#4DABF7"/>
+    <ellipse cx="817" cy="146" rx="45" ry="12" fill="#D0EBFF" stroke="#4DABF7"/>
+    <text x="817" y="198" class="box" text-anchor="middle">DB</text>
+  </g>
+  <line x1="588" y1="195" x2="768" y2="195" stroke="#2F9E44" stroke-width="5" marker-end="url(#green)"/>
+  <text x="594" y="178" class="q" style="fill:#2B8A3E">1 × SELECT o.Id, c.Name</text>
+  <text x="594" y="220" class="q" style="fill:#2B8A3E">FROM Orders o JOIN Customers c</text>
+  <text x="486" y="314" class="big" style="fill:#2B8A3E">1 round trip</text>
+  <rect x="486" y="328" width="390" height="38" rx="8" fill="#FFFFFF" stroke="#B2F2BB"/>
+  <text x="498" y="352" class="code">orders.Select(o => new { o.Id, o.Customer.Name })</text>
+</svg>

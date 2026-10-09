@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" fill="#212529" viewBox="0 0 920 440" width="920" height="440" role="img" aria-labelledby="t d">
+  <title id="t">Dependency injection lifetimes over two requests</title>
+  <desc id="d">A singleton has one instance for the whole app. A scoped service has one instance per request. A transient service gets a new instance every time it is injected. A singleton that holds a scoped service is a captive dependency.</desc>
+  <style>
+    text { font-family: "Segoe UI", Helvetica, Arial, sans-serif; }
+    .title { font-size: 22px; font-weight: 700; }
+    .sub { font-size: 13px; fill: #495057; }
+    .name { font-size: 15px; font-weight: 700; }
+    .hint { font-size: 11.5px; fill: #6C757D; }
+    .col { font-size: 12.5px; font-weight: 700; fill: #495057; }
+    .in { font-size: 12px; font-weight: 600; fill: #FFFFFF; }
+    .warn { font-size: 15px; font-weight: 700; fill: #C92A2A; }
+    .wtext { font-size: 12.5px; fill: #495057; }
+  </style>
+
+  <rect x="1" y="1" width="918" height="438" rx="16" fill="#FFFFFF" stroke="#DEE2E6"/>
+  <text x="24" y="40" class="title">DI lifetimes: how many instances, and for how long?</text>
+  <text x="24" y="62" class="sub">The same three services, followed across two HTTP requests.</text>
+
+  <!-- request columns -->
+  <rect x="260" y="98" width="260" height="196" rx="10" fill="#F8F9FA" stroke="#E9ECEF"/>
+  <rect x="580" y="98" width="260" height="196" rx="10" fill="#F8F9FA" stroke="#E9ECEF"/>
+  <text x="190" y="90" class="col">app starts</text>
+  <text x="390" y="90" class="col" text-anchor="middle">Request 1 (scope 1)</text>
+  <text x="710" y="90" class="col" text-anchor="middle">Request 2 (scope 2)</text>
+  <text x="890" y="90" class="col" text-anchor="end">app stops</text>
+  <line x1="190" y1="96" x2="190" y2="294" stroke="#ADB5BD" stroke-dasharray="4 3"/>
+  <line x1="890" y1="96" x2="890" y2="294" stroke="#ADB5BD" stroke-dasharray="4 3"/>
+
+  <!-- singleton -->
+  <text x="24" y="132" class="name" style="fill:#5F3DC4">Singleton</text>
+  <text x="24" y="149" class="hint">AddSingleton: caches, clients</text>
+  <rect x="190" y="116" width="700" height="34" rx="8" fill="#512BD4"/>
+  <text x="540" y="138" class="in" text-anchor="middle">ONE instance shared by every request and thread (must be thread-safe)</text>
+
+  <!-- scoped -->
+  <text x="24" y="196" class="name" style="fill:#0B7285">Scoped</text>
+  <text x="24" y="213" class="hint">AddScoped: DbContext, services</text>
+  <rect x="272" y="180" width="236" height="34" rx="8" fill="#0C8599"/>
+  <text x="390" y="202" class="in" text-anchor="middle">instance A (whole request 1)</text>
+  <rect x="592" y="180" width="236" height="34" rx="8" fill="#0C8599"/>
+  <text x="710" y="202" class="in" text-anchor="middle">instance B (whole request 2)</text>
+
+  <!-- transient -->
+  <text x="24" y="260" class="name" style="fill:#D9480F">Transient</text>
+  <text x="24" y="277" class="hint">AddTransient: light helpers</text>
+  <g>
+    <rect x="280" y="244" width="60" height="34" rx="8" fill="#F76707"/><text x="310" y="266" class="in" text-anchor="middle">#1</text>
+    <rect x="360" y="244" width="60" height="34" rx="8" fill="#F76707"/><text x="390" y="266" class="in" text-anchor="middle">#2</text>
+    <rect x="440" y="244" width="60" height="34" rx="8" fill="#F76707"/><text x="470" y="266" class="in" text-anchor="middle">#3</text>
+    <rect x="610" y="244" width="60" height="34" rx="8" fill="#F76707"/><text x="640" y="266" class="in" text-anchor="middle">#4</text>
+    <rect x="740" y="244" width="60" height="34" rx="8" fill="#F76707"/><text x="770" y="266" class="in" text-anchor="middle">#5</text>
+  </g>
+  <text x="890" y="314" class="hint" text-anchor="end">a new transient every time something asks for it</text>
+
+  <!-- captive dependency warning -->
+  <rect x="24" y="330" width="872" height="88" rx="12" fill="#FFF5F5" stroke="#FFA8A8"/>
+  <text x="44" y="358" class="warn">⚠ Captive dependency</text>
+  <text x="44" y="381" class="wtext">A singleton that takes a scoped DbContext in its constructor keeps "instance A" forever. Every request and thread then shares</text>
+  <text x="44" y="399" class="wtext">one DbContext: threading errors, stale data, growing memory. Fix: inject IServiceScopeFactory and create a scope per unit of work.</text>
+</svg>

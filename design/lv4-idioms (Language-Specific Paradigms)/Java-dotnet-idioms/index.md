@@ -5,6 +5,8 @@ Core patterns native to enterprise compiled managed languages:
 2. **Dispose Pattern (try-with-resources / `using`):** Guarantees instant release of unmanaged OS resources (like file streams, network sockets, database connections) as soon as the execution block exits.
 3. **LINQ (Language Integrated Query):** Syntactic query engine built directly into C# to cleanly filter, map, and transform local data collections or remote databases.
 
+For the full C# and .NET deep dive (runtime, C# 5 to C# 14, ASP.NET 4.5 to ASP.NET Core, EF6 and EF Core), see [.NET Platform](../../../specific-language/dotnet/index.md) and [C# Language Deep Dive](../../../specific-language/dotnet/csharp/index.md).
+
 ## Interview Questions & Answers
 
 ### Q1: Why is the Dispose Pattern critical for unmanaged system resources?
