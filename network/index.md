@@ -6,5 +6,6 @@ Comprehensive study guides for software engineering interviews covering network 
 
 - [Network Security & TLS Handshakes](./security/index.md)
 - [Core Communication Protocols (HTTP, TCP, UDP)](./protocols/index.md)
+- [Proxy, VPN, and WebRTC (including IP leak prevention)](./protocols/proxy-vpn-webrtc/index.md)
 - [URL Anatomy & Domain Architecture](./protocols/url-anatomy/index.md)
 - [DNS & Distributed WebSockets Scaling](./others/index.md)

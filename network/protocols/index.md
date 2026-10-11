@@ -31,6 +31,7 @@ flowchart TD
 | [DHCP](dhcp/) | How devices receive local network configuration |
 | [FTP, FTPS, and SFTP](ftp-sftp-ftps/) | How systems transfer files securely |
 | [WebSocket](websocket/) | How browsers maintain bidirectional sessions |
+| [Proxy, VPN, and WebRTC](proxy-vpn-webrtc/) | How intermediaries route traffic and how to detect or prevent IP leaks |
 | [SMTP](smtp/) | How email is submitted and relayed |
 | [IMAP](imap/) | How clients synchronize mailboxes |
 | [SSH](ssh/) | How remote access and secure channels work |
