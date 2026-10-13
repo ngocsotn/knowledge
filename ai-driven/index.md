@@ -12,3 +12,4 @@ Advanced study guides for engineering modern AI systems, RAG networks, and auton
 - [Agent Skills Playbook: Reuse, Verify, Grill](./agent-skill-design-patterns.md)
 - [LLM Fundamentals & Mechanics](./llm-fundamentals.md)
 - [Model Context Protocol (MCP)](./model-context-protocol.md)
+- [WebMCP: Exposing Web App Actions to AI Agents](./web-mcp.md)
