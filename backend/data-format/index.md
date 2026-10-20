@@ -7,6 +7,7 @@ JSON, JSON Lines (JSONL/NDJSON), and XML represent structured data in text. They
 - [JSON](./json.md)
 - [JSON Lines: JSONL and NDJSON](./jsonl-ndjson.md)
 - [XML](./xml.md)
+- [Protocol Buffers (Protobuf) and gRPC](../api/design/rpc-grpc/index.md)
 - [Using Formats in APIs](./api-integration.md)
 - [Files and Streaming](./file-and-streaming.md)
 
