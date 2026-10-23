@@ -367,6 +367,7 @@ measured bottleneck justifies them.
   - [SQL Fundamentals & ACID](./sql/fundamentals/index.md)
   - [SQL Query Optimization](./sql/query-optimization/index.md)
   - [Database Storage Engines](./sql/storage-engine/index.md)
+  - [SQLite: Embedded Relational Database](./sql/sqlite/index.md)
   - [SQL Scaling Replacements](./sql/scaling/index.md)
   - [SQL Sharding & Replication](./sql/sharding-replication/index.md)
   - [SQL Concurrency & Locks](./sql/concurrency/index.md)
