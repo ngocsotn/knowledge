@@ -13,3 +13,5 @@ Advanced study guides for engineering modern AI systems, RAG networks, and auton
 - [LLM Fundamentals & Mechanics](./llm-fundamentals.md)
 - [Model Context Protocol (MCP)](./model-context-protocol.md)
 - [WebMCP: Exposing Web App Actions to AI Agents](./web-mcp.md)
+- [Jev AI: Typed Decisions for Software Workflows](./jev-ai.md)
+- [Forward Deployed Engineer (FDE): AI Product Engineering Roadmap](./fde-ai.md)
