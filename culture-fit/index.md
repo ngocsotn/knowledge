@@ -55,3 +55,15 @@
 - Different of product company and outsource company?
 - What is B2b and B2C target?
 - What is offshore vs onshore company?
+
+## Ask back the interviewer? "Do you have any questions for us?"
+
+- Can you tell me a bit about the working time? working days in the week?
+- Benefit when OT for urgent task? OT applicant & pass process? Does it need much time to process OT request?
+- What is the daily tasks about?
+- In the first 3 month, what do you expect the candidate to archive?
+- Which team I will work with? And can you introduce a little bit about that team please? How many people in the team? the workflow of the team? and who manage the team?
+- During probation time, do I received full salary and benefit? if not what I will received?
+- In our company’s culture, when go to work, do I have to wear some dress code like business dress code or freestyle but keep polite?
+- I don’t have to use my own device for working here, right?
+- Can you describe the working culture of the organization?
