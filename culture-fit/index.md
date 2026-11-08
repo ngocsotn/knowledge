@@ -61,9 +61,12 @@
 - Can you tell me a bit about the working time? working days in the week?
 - Benefit when OT for urgent task? OT applicant & pass process? Does it need much time to process OT request?
 - What is the daily tasks about?
-- In the first 3 month, what do you expect the candidate to archive?
+- In the first 3 month or in probation time, what do you expect the candidate to archive?
 - Which team I will work with? And can you introduce a little bit about that team please? How many people in the team? the workflow of the team? and who manage the team?
 - During probation time, do I received full salary and benefit? if not what I will received?
 - In our company’s culture, when go to work, do I have to wear some dress code like business dress code or freestyle but keep polite?
 - I don’t have to use my own device for working here, right?
 - Can you describe the working culture of the organization?
+- Does our company have Devops team, operation teams or Database analyst team? security team? QA team?
+- How many environments (dev, qa, prd) that our company have in each project?
+- (For outsource company): Do I have to communicate with our client?
