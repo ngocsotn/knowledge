@@ -11,5 +11,6 @@ Deep-dive study guides for software engineering interviews covering stateful ses
   - [Frontend Token Storage](./jwt/for-frontend/index.md)
   - [Backend Signature Validation](./jwt/for-backend/index.md)
 - [OAuth 2.0 & OpenID Connect (OIDC)](./oauth2/index.md)
+  - [OAuth 1.0a vs. OAuth 2.0](./oauth2/oauth1-vs-oauth2.md)
   - [Client-side Flows & PKCE](./oauth2/for-frontend/index.md)
   - [Server-side Grants & Multi-Tenancy](./oauth2/for-backend/index.md)

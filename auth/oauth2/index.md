@@ -2,6 +2,8 @@
 
 Comprehensive staff-level study guide covering delegated authorization (OAuth 2.0), identity federations (OIDC, SSO, SAML), multi-tenant JWT architectures, security hardening (PKCE, DPoP, Sender-Constrained Tokens), and advanced, scenario-based system architecture interview questions.
 
+For a concise historical comparison and real-life examples, see [OAuth 1.0a vs. OAuth 2.0](./oauth1-vs-oauth2.md).
+
 ---
 
 ## 1. OAuth 2.0 & OIDC Core Foundations
